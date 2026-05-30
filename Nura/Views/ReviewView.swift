@@ -4,6 +4,7 @@
 import SwiftUI
 import SwiftData
 import Charts
+import UIKit
 
 // MARK: - ReviewView
 
@@ -18,8 +19,15 @@ struct ReviewView: View {
     @Query private var allMedicines: [MedicineRecord]
     @Query private var allTemperatures: [TemperatureRecord]
     @Query private var allBreathing: [BreathingRecord]
+    @Query private var allFetalMovements: [FetalMovementRecord]
+    @Query private var allBloodPressures: [BloodPressureRecord]
+    @Query private var allBloodSugars: [BloodSugarRecord]
+    @Query private var allPregnancyWeights: [PregnancyWeightRecord]
+    @Query private var allVaccines: [VaccineRecord]
 
     @State private var timeFilter: TimeFilter = .week
+    @State private var shareImage: UIImage?
+    @State private var showShareSheet = false
 
     enum TimeFilter: String, CaseIterable {
         case week = "7天"
@@ -31,6 +39,10 @@ struct ReviewView: View {
         guard let id = selectedChildId else { return children.first }
         // Ensure the child still exists and hasn't been deleted
         return children.first(where: { $0.id == id }) ?? children.first
+    }
+
+    var selectedStage: CareStage {
+        selectedChild?.careStage ?? .infant
     }
 
     var cutoffDate: Date {
@@ -94,30 +106,89 @@ struct ReviewView: View {
         childBreathing.filter { $0.timestamp >= cutoffDate }
     }
 
+    var childFetalMovements: [FetalMovementRecord] {
+        guard let child = selectedChild else { return [] }
+        return allFetalMovements.filter { $0.child?.id == child.id }
+            .sorted { $0.timestamp > $1.timestamp }
+    }
+
+    var childBloodPressures: [BloodPressureRecord] {
+        guard let child = selectedChild else { return [] }
+        return allBloodPressures.filter { $0.child?.id == child.id }
+            .sorted { $0.timestamp > $1.timestamp }
+    }
+
+    var childBloodSugars: [BloodSugarRecord] {
+        guard let child = selectedChild else { return [] }
+        return allBloodSugars.filter { $0.child?.id == child.id }
+            .sorted { $0.timestamp > $1.timestamp }
+    }
+
+    var childPregnancyWeights: [PregnancyWeightRecord] {
+        guard let child = selectedChild else { return [] }
+        return allPregnancyWeights.filter { $0.child?.id == child.id }
+            .sorted { $0.timestamp > $1.timestamp }
+    }
+
+    var childVaccines: [VaccineRecord] {
+        guard let child = selectedChild else { return [] }
+        return allVaccines.filter { $0.child?.id == child.id }
+            .sorted { ($0.completedDate ?? $0.scheduledDate) > ($1.completedDate ?? $1.scheduledDate) }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
+                    if let child = selectedChild {
+                        StageHeaderCard(child: child)
+                    }
+
                     TimeFilterPicker(selection: $timeFilter)
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
 
-                    GrowthCard(
-                        growthRecords: childGrowthRecords,
-                        childName: selectedChild?.name ?? ""
-                    )
-
-                    FeedingTrendCard(feedings: childFeedings)
-
-                    DiaperTrendCard(diapers: childDiapers, historyRecords: childDiaperHistory)
-
-                    SleepTrendCard(sleeps: childSleeps)
-
-                    TemperatureTrendCard(records: filteredTemperatures, historyRecords: childTemperatures)
-
-                    BreathingTrendCard(records: filteredBreathing, historyRecords: childBreathing, child: selectedChild)
-                    
-                    MedicineCard(medicines: childMedicines)
+                    switch selectedStage {
+                    case .pregnancy:
+                        PregnancyReviewHintCard(child: selectedChild)
+                        if let child = selectedChild {
+                            PrenatalReviewCard(child: child)
+                        }
+                        PregnancyReviewRecordsCard(
+                            fetalMovements: childFetalMovements,
+                            bloodPressures: childBloodPressures,
+                            bloodSugars: childBloodSugars,
+                            weights: childPregnancyWeights
+                        )
+                        TemperatureTrendCard(records: filteredTemperatures, historyRecords: childTemperatures)
+                        MedicineCard(medicines: childMedicines)
+                    case .infant:
+                        GrowthCard(
+                            growthRecords: childGrowthRecords,
+                            childName: selectedChild?.name ?? ""
+                        )
+                        FeedingTrendCard(feedings: childFeedings)
+                        DiaperTrendCard(diapers: childDiapers, historyRecords: childDiaperHistory)
+                        SleepTrendCard(sleeps: childSleeps)
+                        if let child = selectedChild {
+                            VaccineReviewCard(child: child, records: childVaccines)
+                        }
+                        TemperatureTrendCard(records: filteredTemperatures, historyRecords: childTemperatures)
+                        BreathingTrendCard(records: filteredBreathing, historyRecords: childBreathing, child: selectedChild)
+                        MedicineCard(medicines: childMedicines)
+                    case .child:
+                        GrowthCard(
+                            growthRecords: childGrowthRecords,
+                            childName: selectedChild?.name ?? ""
+                        )
+                        SleepTrendCard(sleeps: childSleeps)
+                        if let child = selectedChild {
+                            VaccineReviewCard(child: child, records: childVaccines)
+                        }
+                        TemperatureTrendCard(records: filteredTemperatures, historyRecords: childTemperatures)
+                        BreathingTrendCard(records: filteredBreathing, historyRecords: childBreathing, child: selectedChild)
+                        MedicineCard(medicines: childMedicines)
+                    }
 
                     Spacer(minLength: 20)
                 }
@@ -141,8 +212,381 @@ struct ReviewView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     ChildSwitcherView(selectedChildId: $selectedChildId)
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        generateReportImage()
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.nuraPrimary)
+                    }
+                }
             }
         }
+        .sheet(isPresented: $showShareSheet) {
+            if let shareImage {
+                ActivityShareSheet(items: [shareImage])
+            }
+        }
+    }
+
+    @MainActor
+    private func generateReportImage() {
+        guard let selectedChild else { return }
+        let report = NuraReportSnapshotView(
+            child: selectedChild,
+            stage: selectedStage,
+            timeFilterText: timeFilter.rawValue,
+            growthRecords: childGrowthRecords,
+            feedings: childFeedings,
+            sleeps: childSleeps,
+            diapers: childDiapers,
+            medicines: childMedicines,
+            temperatures: filteredTemperatures,
+            breathing: filteredBreathing
+        )
+        .frame(width: 390)
+
+        let renderer = ImageRenderer(content: report)
+        renderer.scale = 3
+        shareImage = renderer.uiImage
+        showShareSheet = shareImage != nil
+    }
+}
+
+struct ActivityShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Report Snapshot
+
+struct NuraReportSnapshotView: View {
+    var child: Child
+    var stage: CareStage
+    var timeFilterText: String
+    var growthRecords: [GrowthRecord]
+    var feedings: [FeedingRecord]
+    var sleeps: [SleepRecord]
+    var diapers: [DiaperRecord]
+    var medicines: [MedicineRecord]
+    var temperatures: [TemperatureRecord]
+    var breathing: [BreathingRecord]
+
+    private var totalSleepHours: Double {
+        sleeps.compactMap(\.durationHours).reduce(0, +)
+    }
+
+    private var totalFeedingMl: Double {
+        feedings.compactMap(\.amountMl).reduce(0, +)
+    }
+
+    private var latestGrowth: GrowthRecord? {
+        growthRecords.last
+    }
+
+    private var generatedDate: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy年M月d日"
+        return formatter.string(from: Date())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            reportHeader
+            stageSummary
+            metricsGrid
+            if stage == .pregnancy {
+                pregnancyPanel
+            } else {
+                growthPanel
+            }
+            footer
+        }
+        .padding(22)
+        .background(
+            LinearGradient(
+                colors: [Color(UIColor.systemBackground), stage.color.opacity(0.08)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+    }
+
+    private var reportHeader: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("NURA")
+                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .tracking(2.5)
+                    .foregroundStyle(.nuraPrimary)
+                Text("成长回顾报告")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                Text("\(generatedDate) · \(timeFilterText)")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            ZStack {
+                Circle().fill(stage.color.opacity(0.14))
+                Image(systemName: stage.icon)
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(stage.color)
+            }
+            .frame(width: 58, height: 58)
+        }
+    }
+
+    private var stageSummary: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(child.name)
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                    Text(child.stageDisplay)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                NuraBadge(text: stage.title, color: stage.color)
+            }
+            Text(stage.subtitle)
+                .font(.nuraCaption())
+                .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .background(Color(UIColor.secondarySystemBackground))
+        .cornerRadius(14)
+    }
+
+    private var metricsGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            ReportMetricTile(title: "睡眠", value: String(format: "%.1f h", totalSleepHours), icon: "moon.fill", color: Color(hex: "818CF8"))
+            ReportMetricTile(title: "体温", value: temperatures.last?.temperatureDisplay ?? "--", icon: "thermometer.medium", color: .nuraDanger)
+            ReportMetricTile(title: "用药", value: "\(medicines.count) 次", icon: "pills.fill", color: .nuraWarning)
+            ReportMetricTile(title: stage == .infant ? "喂奶" : "呼吸", value: stage == .infant ? "\(Int(totalFeedingMl)) ml" : (breathing.last?.rateDisplay ?? "--"), icon: stage == .infant ? "drop.fill" : "lungs.fill", color: stage == .infant ? .nuraPrimary : Color(hex: "14B8A6"))
+        }
+    }
+
+    private var pregnancyPanel: some View {
+        let info = child.pregnancySizeInfo
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("本周宝宝大小")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle().fill(info.color.opacity(0.14))
+                    Image(systemName: info.icon)
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundStyle(info.color)
+                }
+                .frame(width: 82, height: 82)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("像\(info.sizeName)一样大")
+                        .font(.system(size: 21, weight: .bold, design: .rounded))
+                    Text("\(info.lengthText) · \(info.weightText)")
+                        .font(.nuraCaption())
+                        .foregroundStyle(.secondary)
+                    Text(info.situation)
+                        .font(.nuraCaption())
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(14)
+        .background(Color(UIColor.secondarySystemBackground))
+        .cornerRadius(14)
+    }
+
+    private var growthPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("最新成长数据")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                ReportMetricTile(title: "体重", value: latestGrowth?.weightKg.map { String(format: "%.1f kg", $0) } ?? "--", icon: "scalemass", color: .nuraPrimary)
+                ReportMetricTile(title: "身高", value: latestGrowth?.heightCm.map { String(format: "%.0f cm", $0) } ?? "--", icon: "ruler", color: .nuraBlue)
+            }
+        }
+        .padding(14)
+        .background(Color(UIColor.secondarySystemBackground))
+        .cornerRadius(14)
+    }
+
+    private var footer: some View {
+        Text("报告由 NURA 自动生成，数据来自当前档案记录。")
+            .font(.system(size: 10, weight: .medium, design: .rounded))
+            .foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.top, 4)
+    }
+}
+
+struct ReportMetricTile: View {
+    var title: String
+    var value: String
+    var icon: String
+    var color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(color.opacity(0.08))
+        .cornerRadius(12)
+    }
+}
+
+// MARK: - Pregnancy Review Records
+
+struct PrenatalReviewCard: View {
+    var child: Child
+
+    private var currentAndNext: [PrenatalCheckupItem] {
+        PrenatalCheckupItem.upcoming(for: child.gestationalWeek, within: 1)
+    }
+
+    private var history: [PrenatalCheckupItem] {
+        Array(PrenatalCheckupItem.history(before: child.gestationalWeek).prefix(10))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(icon: "stethoscope", title: "产检项目", iconColor: .nuraBlue)
+            if currentAndNext.isEmpty {
+                EmptyStateRow(text: "当前周和下周暂无固定产检项目")
+            } else {
+                Text("当前周及下周")
+                    .font(.nuraCaption())
+                    .foregroundStyle(.secondary)
+                ForEach(currentAndNext) { item in
+                    PrenatalCheckupRow(item: item, isHistory: false)
+                }
+            }
+            if !history.isEmpty {
+                Divider()
+                Text("已过孕周回顾")
+                    .font(.nuraCaption())
+                    .foregroundStyle(.secondary)
+                ForEach(history) { item in
+                    PrenatalCheckupRow(item: item, isHistory: true)
+                }
+            }
+        }
+        .nuraCard()
+    }
+}
+
+struct PregnancyReviewRecordsCard: View {
+    var fetalMovements: [FetalMovementRecord]
+    var bloodPressures: [BloodPressureRecord]
+    var bloodSugars: [BloodSugarRecord]
+    var weights: [PregnancyWeightRecord]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(icon: "waveform.path.ecg", title: "孕期记录回顾", iconColor: Color(hex: "EC4899"))
+            PregnancyRecordSummaryRow(
+                icon: "hand.tap.fill",
+                title: "胎动",
+                value: fetalMovements.first.map { "\($0.count)次 / \($0.durationDisplay)" } ?? "--",
+                detail: fetalMovements.first?.dateDisplay ?? "暂无记录",
+                color: Color(hex: "EC4899")
+            )
+            PregnancyRecordSummaryRow(
+                icon: "heart.text.square.fill",
+                title: "血压",
+                value: bloodPressures.first?.valueDisplay ?? "--",
+                detail: bloodPressures.first.map { "\($0.status) · \($0.dateDisplay)" } ?? "暂无记录",
+                color: Color(hex: "DC2626")
+            )
+            PregnancyRecordSummaryRow(
+                icon: "drop.degreesign.fill",
+                title: "血糖",
+                value: bloodSugars.first?.valueDisplay ?? "--",
+                detail: bloodSugars.first.map { "\($0.timing.rawValue) · \($0.dateDisplay)" } ?? "暂无记录",
+                color: Color(hex: "06B6D4")
+            )
+            PregnancyRecordSummaryRow(
+                icon: "scalemass.fill",
+                title: "体重",
+                value: weights.first?.valueDisplay ?? "--",
+                detail: weights.first?.dateDisplay ?? "暂无记录",
+                color: Color(hex: "8B5CF6")
+            )
+        }
+        .nuraCard()
+    }
+}
+
+struct PregnancyRecordSummaryRow: View {
+    var icon: String
+    var title: String
+    var value: String
+    var detail: String
+    var color: Color
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(color.opacity(0.12))
+                    .frame(width: 42, height: 42)
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                Text(detail)
+                    .font(.nuraCaption())
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(value)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(color)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Pregnancy Review Hint
+
+struct PregnancyReviewHintCard: View {
+    var child: Child?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(icon: "heart.text.square.fill", title: "孕期回顾", iconColor: child?.careStage.color ?? Color(hex: "EC4899"))
+            Text("孕期阶段优先查看体温波动和用药记录。宝宝出生后，将日期改为出生日期或预产期到达后，回顾页会自动切换到婴儿成长、喂养、尿布和睡眠分析。")
+                .font(.nuraCaption())
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .nuraCard()
     }
 }
 
@@ -363,11 +807,13 @@ struct FeedingTrendCard: View {
     var weeklyData: [WeeklyFeedPoint] {
         let calendar = Calendar.current
         let today = Date()
+        let grouped = Dictionary(grouping: feedings) { record in
+            calendar.startOfDay(for: record.timestamp)
+        }
         return (0..<7).map { offset -> WeeklyFeedPoint in
             let date = calendar.date(byAdding: .day, value: -(6 - offset), to: today)!
             let dayStart = calendar.startOfDay(for: date)
-            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
-            let dayFeedings = feedings.filter { $0.timestamp >= dayStart && $0.timestamp < dayEnd }
+            let dayFeedings = grouped[dayStart] ?? []
             let count = dayFeedings.count
             let totalMl = dayFeedings.compactMap(\.amountMl).reduce(0, +)
             let weekday = calendar.component(.weekday, from: date)
@@ -530,14 +976,13 @@ struct SleepTrendCard: View {
     var weeklyData: [(day: String, hours: Double)] {
         let calendar = Calendar.current
         let today = Date()
+        let grouped = Dictionary(grouping: sleeps) { record in
+            calendar.startOfDay(for: record.startTime)
+        }
         return (0..<7).map { offset -> (String, Double) in
             let date = calendar.date(byAdding: .day, value: -(6 - offset), to: today)!
             let dayStart = calendar.startOfDay(for: date)
-            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
-            let hours = sleeps
-                .filter { $0.startTime >= dayStart && $0.startTime < dayEnd }
-                .compactMap(\.durationHours)
-                .reduce(0, +)
+            let hours = (grouped[dayStart] ?? []).compactMap(\.durationHours).reduce(0, +)
             let weekday = calendar.component(.weekday, from: date)
             let names = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
             return (names[weekday - 1], hours)
@@ -818,11 +1263,155 @@ struct HealthSummaryCell: View {
     }
 }
 
+// MARK: - VaccineReviewCard
+
+struct VaccineReviewCard: View {
+    var child: Child
+    var records: [VaccineRecord]
+    @Environment(\.modelContext) private var modelContext
+    @State private var showHistory = false
+
+    private var reminders: [VaccineReminderItem] {
+        vaccineReminders(for: child, records: records)
+    }
+
+    private var nextReminder: VaccineReminderItem? {
+        reminders.first { !$0.isCompleted }
+    }
+
+    private var completedRecords: [VaccineRecord] {
+        records.filter(\.isCompleted)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                SectionLabel(icon: "syringe.fill", title: "疫苗记录", iconColor: Color(hex: "10B981"))
+                Spacer()
+                if !completedRecords.isEmpty {
+                    Button("历史") { showHistory = true }
+                        .font(.nuraCaption())
+                        .foregroundStyle(Color(hex: "10B981"))
+                }
+            }
+
+            if let nextReminder {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("下次接种")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    VaccineReminderRow(reminder: nextReminder)
+                }
+                .padding(12)
+                .background(nextReminder.status.color.opacity(0.08))
+                .cornerRadius(12)
+            } else {
+                EmptyStateRow(text: "当前计划内疫苗已记录完成")
+            }
+
+            if completedRecords.isEmpty {
+                EmptyStateRow(text: "暂无已接种记录")
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(completedRecords.prefix(4).enumerated()), id: \.element.id) { index, record in
+                        VaccineHistoryRow(record: record) {
+                            modelContext.delete(record)
+                        }
+                        if index < min(completedRecords.count, 4) - 1 {
+                            Divider().padding(.leading, 44)
+                        }
+                    }
+                }
+            }
+        }
+        .nuraCard()
+        .sheet(isPresented: $showHistory) {
+            VaccineHistoryView(records: completedRecords)
+        }
+    }
+}
+
+struct VaccineHistoryRow: View {
+    var record: VaccineRecord
+    var onDelete: () -> Void
+    @State private var showDeleteConfirmation = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(hex: "10B981").opacity(0.12))
+                    .frame(width: 34, height: 34)
+                Image(systemName: "syringe.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color(hex: "10B981"))
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(record.vaccineName) \(record.dose)")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                Text(record.notes ?? "接种日期 \(record.dateDisplay)")
+                    .font(.nuraCaption())
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(record.dateDisplay)
+                .font(.nuraMono())
+                .foregroundStyle(Color(hex: "10B981"))
+        }
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button(role: .destructive) {
+                showDeleteConfirmation = true
+            } label: {
+                Label("删除记录", systemImage: "trash")
+            }
+        }
+        .confirmationDialog("删除记录", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+            Button("删除", role: .destructive) { onDelete() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("确定要删除这条疫苗记录吗？")
+        }
+    }
+}
+
+struct VaccineHistoryView: View {
+    var records: [VaccineRecord]
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if records.isEmpty {
+                    Section { EmptyStateRow(text: "暂无疫苗历史") }
+                } else {
+                    ForEach(records) { record in
+                        VaccineHistoryRow(record: record) {
+                            modelContext.delete(record)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("疫苗历史")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                        .foregroundStyle(.nuraPrimary)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - MedicineCard
 
 struct MedicineCard: View {
     var medicines: [MedicineRecord]
     @Environment(\.modelContext) private var modelContext
+    @State private var showHistory = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -850,7 +1439,9 @@ struct MedicineCard: View {
                     }
                 }
                 if medicines.count > 5 {
-                    Button("查看全部 \(medicines.count) 条") {}
+                    Button("查看全部 \(medicines.count) 条") {
+                        showHistory = true
+                    }
                         .font(.nuraCaption())
                         .foregroundStyle(Color(hex: "F59E0B"))
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -859,12 +1450,82 @@ struct MedicineCard: View {
             }
         }
         .nuraCard()
+        .sheet(isPresented: $showHistory) {
+            MedicineHistoryView(records: medicines)
+        }
     }
     
     private func deleteRecord(_ record: MedicineRecord) {
         withAnimation {
             modelContext.delete(record)
         }
+    }
+}
+
+struct MedicineHistoryView: View {
+    var records: [MedicineRecord]
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.modelContext) private var modelContext
+
+    private var dailyGroups: [DailyMedicineGroup] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: records) { record in
+            calendar.startOfDay(for: record.timestamp)
+        }
+        return grouped.map { date, records in
+            DailyMedicineGroup(date: date, records: records.sorted { $0.timestamp > $1.timestamp })
+        }
+        .sorted { $0.date > $1.date }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if dailyGroups.isEmpty {
+                    Section {
+                        EmptyStateRow(text: "暂无用药历史")
+                    }
+                } else {
+                    ForEach(dailyGroups) { group in
+                        Section {
+                            ForEach(group.records) { medicine in
+                                MedicineRow(medicine: medicine) {
+                                    modelContext.delete(medicine)
+                                }
+                            }
+                        } header: {
+                            HStack {
+                                Text(group.dateDisplay)
+                                Spacer()
+                                Text("\(group.records.count) 次")
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("用药历史")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                        .foregroundStyle(Color(hex: "F59E0B"))
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                }
+            }
+        }
+    }
+}
+
+struct DailyMedicineGroup: Identifiable {
+    let id = UUID()
+    let date: Date
+    let records: [MedicineRecord]
+
+    var dateDisplay: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M月d日 EEEE"
+        return formatter.string(from: date)
     }
 }
 
@@ -943,11 +1604,13 @@ struct DiaperTrendCard: View {
     var weeklyData: [WeeklyDiaperPoint] {
         let calendar = Calendar.current
         let today = Date()
+        let grouped = Dictionary(grouping: diapers) { record in
+            calendar.startOfDay(for: record.timestamp)
+        }
         return (0..<7).map { offset -> WeeklyDiaperPoint in
             let date = calendar.date(byAdding: .day, value: -(6 - offset), to: today)!
             let dayStart = calendar.startOfDay(for: date)
-            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
-            let dayDiapers = diapers.filter { $0.timestamp >= dayStart && $0.timestamp < dayEnd }
+            let dayDiapers = grouped[dayStart] ?? []
             let wetCount = dayDiapers.filter { $0.type == .wet }.count
             let dirtyCount = dayDiapers.filter { $0.type == .dirty }.count
             let bothCount = dayDiapers.filter { $0.type == .both }.count
@@ -1004,9 +1667,60 @@ struct DiaperTrendCard: View {
             if !hasData {
                 EmptyStateRow(text: "暂无尿布数据")
             } else {
-                VStack(spacing: 10) {
-                    DiaperDailyTable(points: weeklyData)
+                Chart(weeklyData) { point in
+                    BarMark(
+                        x: .value("日期", point.day),
+                        y: .value("次数", point.wetCount),
+                        stacking: .standard
+                    )
+                    .foregroundStyle(Color.nuraBlue)
+                    .cornerRadius(4)
+
+                    BarMark(
+                        x: .value("日期", point.day),
+                        y: .value("次数", point.dirtyCount),
+                        stacking: .standard
+                    )
+                    .foregroundStyle(Color.nuraWarning)
+                    .cornerRadius(4)
+
+                    BarMark(
+                        x: .value("日期", point.day),
+                        y: .value("次数", point.bothCount),
+                        stacking: .standard
+                    )
+                    .foregroundStyle(Color(hex: "8B5CF6"))
+                    .cornerRadius(4)
                 }
+                .chartXAxis {
+                    AxisMarks { value in
+                        AxisValueLabel {
+                            if let day = value.as(String.self) {
+                                Text(day).font(.system(size: 9, design: .rounded))
+                            }
+                        }
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                        AxisValueLabel {
+                            if let count = value.as(Double.self) {
+                                Text("\(Int(count))").font(.system(size: 9, design: .rounded))
+                            }
+                        }
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(Color(UIColor.separator).opacity(0.3))
+                    }
+                }
+                .frame(height: 150)
+
+                HStack(spacing: 14) {
+                    LegendDot(color: .nuraBlue, label: "小便")
+                    LegendDot(color: .nuraWarning, label: "大便")
+                    LegendDot(color: Color(hex: "8B5CF6"), label: "混合")
+                    Spacer()
+                }
+                .padding(.top, 2)
             }
         }
         .nuraCard()

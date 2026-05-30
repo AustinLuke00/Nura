@@ -27,7 +27,7 @@ struct ChildSwitcherView: View {
                         Text(child.name)
                             .font(.system(size: 14, weight: .semibold, design: .rounded))
                             .foregroundStyle(.primary)
-                        Text(child.ageDisplay)
+                        Text(child.stageDisplay)
                             .font(.system(size: 11, weight: .regular, design: .rounded))
                             .foregroundStyle(.secondary)
                     }
@@ -68,6 +68,7 @@ struct ChildPickerSheet: View {
     @Environment(\.modelContext) private var modelContext
     @State private var childToDelete: Child?
     @State private var showDeleteConfirmation = false
+    @State private var childToEdit: Child?
 
     var body: some View {
         NavigationStack {
@@ -86,7 +87,7 @@ struct ChildPickerSheet: View {
                                     Text(child.name)
                                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                                         .foregroundStyle(.primary)
-                                    Text(child.ageDisplay)
+                                    Text(child.stageDisplay)
                                         .font(.system(size: 13, weight: .regular, design: .rounded))
                                         .foregroundStyle(.secondary)
                                 }
@@ -107,6 +108,12 @@ struct ChildPickerSheet: View {
                             } label: {
                                 Label("删除", systemImage: "trash")
                             }
+                            Button {
+                                childToEdit = child
+                            } label: {
+                                Label("编辑", systemImage: "pencil")
+                            }
+                            .tint(.nuraPrimary)
                         }
                     }
                 }
@@ -142,6 +149,9 @@ struct ChildPickerSheet: View {
         }
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
+        .sheet(item: $childToEdit) { child in
+            EditChildSheet(child: child)
+        }
         .alert("确认删除", isPresented: $showDeleteConfirmation, presenting: childToDelete) { child in
             Button("取消", role: .cancel) { }
             Button("删除", role: .destructive) {
@@ -172,6 +182,119 @@ struct ChildPickerSheet: View {
                 dismiss()
             }
         }
+    }
+}
+
+// MARK: - EditChildSheet
+
+struct EditChildSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var child: Child
+
+    @State private var name: String
+    @State private var birthDate: Date
+    @State private var gender: Child.Gender
+    @State private var color: Child.ChildColor
+    @State private var emergencyContactName: String
+    @State private var emergencyContactPhone: String
+
+    init(child: Child) {
+        self.child = child
+        _name = State(initialValue: child.profileType == .pregnancy ? "" : child.name)
+        _birthDate = State(initialValue: child.birthDate)
+        _gender = State(initialValue: child.gender)
+        _color = State(initialValue: child.color)
+        _emergencyContactName = State(initialValue: child.emergencyContactName ?? "")
+        _emergencyContactPhone = State(initialValue: child.emergencyContactPhone ?? "")
+    }
+
+    private var latestSelectableDate: Date {
+        Calendar.current.date(byAdding: .month, value: 10, to: Date()) ?? Date()
+    }
+
+    private var saveDisabled: Bool {
+        child.profileType == .baby && name.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("档案类型") {
+                    Label(child.profileType == .pregnancy ? "孕妇信息" : "宝宝信息",
+                          systemImage: child.profileType == .pregnancy ? "heart.circle.fill" : "figure.child")
+                }
+
+                Section("基本信息") {
+                    if child.profileType == .baby {
+                        TextField("宝宝名字", text: $name)
+                    }
+                    DatePicker(
+                        child.profileType == .pregnancy ? "预产期" : "出生日期",
+                        selection: $birthDate,
+                        in: child.profileType == .pregnancy ? Date.distantPast...latestSelectableDate : Date.distantPast...Date(),
+                        displayedComponents: .date
+                    )
+                }
+
+                if child.profileType == .pregnancy {
+                    Section("紧急联系人") {
+                        TextField("联系人姓名", text: $emergencyContactName)
+                        TextField("联系电话", text: $emergencyContactPhone)
+                            .keyboardType(.phonePad)
+                    }
+                } else {
+                    Section("性别") {
+                        Picker("性别", selection: $gender) {
+                            Text("女").tag(Child.Gender.female)
+                            Text("男").tag(Child.Gender.male)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    Section("主题颜色") {
+                        HStack(spacing: 12) {
+                            ForEach(Child.ChildColor.allCases, id: \.self) { c in
+                                ZStack {
+                                    Circle().fill(c.swatch).frame(width: 36, height: 36)
+                                    if color == c {
+                                        Circle().strokeBorder(.white, lineWidth: 3).frame(width: 36, height: 36)
+                                        Circle().strokeBorder(c.swatch, lineWidth: 1.5).frame(width: 42, height: 42)
+                                    }
+                                }
+                                .onTapGesture { withAnimation { color = c } }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .navigationTitle(child.profileType == .pregnancy ? "编辑孕妇信息" : "编辑宝宝信息")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }.foregroundStyle(.secondary)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") { save() }
+                        .disabled(saveDisabled)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.nuraPrimary)
+                }
+            }
+        }
+        .tint(.nuraPrimary)
+    }
+
+    private func save() {
+        if child.profileType == .baby {
+            child.name = name.trimmingCharacters(in: .whitespaces)
+            child.gender = gender
+            child.color = color
+        }
+        child.birthDate = birthDate
+        child.emergencyContactName = emergencyContactName.trimmingCharacters(in: .whitespaces).nilIfEmpty
+        child.emergencyContactPhone = emergencyContactPhone.trimmingCharacters(in: .whitespaces).nilIfEmpty
+        dismiss()
     }
 }
 
@@ -247,6 +370,34 @@ struct ChildAvatar: View {
     }
 }
 
+// MARK: - EmergencyContactFields
+
+struct EmergencyContactFields: View {
+    @Binding var name: String
+    @Binding var phone: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("紧急联系人", systemImage: "phone.fill")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 0) {
+                TextField("联系人姓名", text: $name)
+                    .font(.system(size: 16, design: .rounded))
+                    .padding()
+                Divider().padding(.leading, 16)
+                TextField("联系电话", text: $phone)
+                    .font(.system(size: 16, design: .rounded))
+                    .keyboardType(.phonePad)
+                    .padding()
+            }
+            .background(Color(UIColor.secondarySystemGroupedBackground))
+            .cornerRadius(12)
+        }
+    }
+}
+
 // MARK: - AddChildSheet
 
 struct AddChildSheet: View {
@@ -257,45 +408,81 @@ struct AddChildSheet: View {
     @State private var birthDate = Date()
     @State private var gender: Child.Gender = .female
     @State private var color: Child.ChildColor = .purple
+    @State private var profileType: Child.ProfileType = .baby
+    @State private var emergencyContactName = ""
+    @State private var emergencyContactPhone = ""
+
+    private var latestSelectableDate: Date {
+        Calendar.current.date(byAdding: .month, value: 10, to: Date()) ?? Date()
+    }
+
+    private var saveDisabled: Bool {
+        profileType == .baby && name.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("基本信息") {
-                    TextField("宝宝名字", text: $name)
-                    DatePicker("出生日期", selection: $birthDate,
-                               in: ...Date(), displayedComponents: .date)
-                }
-
-                Section("性别") {
-                    Picker("性别", selection: $gender) {
-                        Text("女").tag(Child.Gender.female)
-                        Text("男").tag(Child.Gender.male)
+                Section {
+                    Picker("信息类型", selection: $profileType) {
+                        Label("宝宝信息", systemImage: "figure.child").tag(Child.ProfileType.baby)
+                        Label("孕妇信息", systemImage: "heart.circle.fill").tag(Child.ProfileType.pregnancy)
                     }
                     .pickerStyle(.segmented)
                 }
 
-                Section("主题颜色") {
-                    HStack(spacing: 12) {
-                        ForEach(Child.ChildColor.allCases, id: \.self) { c in
-                            ZStack {
-                                Circle().fill(c.swatch).frame(width: 36, height: 36)
-                                if color == c {
-                                    Circle()
-                                        .strokeBorder(.white, lineWidth: 3)
-                                        .frame(width: 36, height: 36)
-                                    Circle()
-                                        .strokeBorder(c.swatch, lineWidth: 1.5)
-                                        .frame(width: 42, height: 42)
-                                }
-                            }
-                            .onTapGesture { withAnimation { color = c } }
-                        }
+                Section("基本信息") {
+                    if profileType == .baby {
+                        TextField("宝宝名字", text: $name)
                     }
-                    .padding(.vertical, 4)
+                    DatePicker(
+                        profileType == .pregnancy ? "预产期" : "出生日期",
+                        selection: $birthDate,
+                        in: profileType == .pregnancy ? Date()...latestSelectableDate : Date.distantPast...Date(),
+                        displayedComponents: .date
+                    )
+                    Text(profileType == .pregnancy ? "孕妇信息只需要填写预产期。" : "宝宝信息会根据年龄自动切换婴儿或儿童界面。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                if profileType == .pregnancy {
+                    Section("紧急联系人") {
+                        TextField("联系人姓名", text: $emergencyContactName)
+                        TextField("联系电话", text: $emergencyContactPhone)
+                            .keyboardType(.phonePad)
+                    }
+                } else {
+                    Section("性别") {
+                        Picker("性别", selection: $gender) {
+                            Text("女").tag(Child.Gender.female)
+                            Text("男").tag(Child.Gender.male)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    Section("主题颜色") {
+                        HStack(spacing: 12) {
+                            ForEach(Child.ChildColor.allCases, id: \.self) { c in
+                                ZStack {
+                                    Circle().fill(c.swatch).frame(width: 36, height: 36)
+                                    if color == c {
+                                        Circle()
+                                            .strokeBorder(.white, lineWidth: 3)
+                                            .frame(width: 36, height: 36)
+                                        Circle()
+                                            .strokeBorder(c.swatch, lineWidth: 1.5)
+                                            .frame(width: 42, height: 42)
+                                    }
+                                }
+                                .onTapGesture { withAnimation { color = c } }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
             }
-            .navigationTitle("添加宝宝")
+            .navigationTitle(profileType == .pregnancy ? "添加孕妇信息" : "添加宝宝")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -303,19 +490,34 @@ struct AddChildSheet: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("添加") { addChild() }
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(saveDisabled)
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundStyle(.nuraPrimary)
                 }
             }
         }
         .tint(.nuraPrimary)
+        .onChange(of: profileType) { _, newValue in
+            if newValue == .pregnancy && birthDate < Date() {
+                birthDate = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
+            } else if newValue == .baby && birthDate > Date() {
+                birthDate = Date()
+            }
+        }
     }
 
     func addChild() {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-        let child = Child(name: trimmed, birthDate: birthDate, gender: gender, color: color)
+        guard profileType == .pregnancy || !trimmed.isEmpty else { return }
+        let child = Child(
+            name: profileType == .pregnancy ? "孕期档案" : trimmed,
+            birthDate: birthDate,
+            gender: gender,
+            color: profileType == .pregnancy ? .pink : color,
+            profileType: profileType,
+            emergencyContactName: emergencyContactName.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+            emergencyContactPhone: emergencyContactPhone.trimmingCharacters(in: .whitespaces).nilIfEmpty
+        )
         modelContext.insert(child)
         dismiss()
     }

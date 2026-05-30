@@ -12,6 +12,9 @@ final class Child {
     var birthDate: Date
     var genderRaw: String
     var colorRaw: String
+    var profileTypeRaw: String = ProfileType.baby.rawValue
+    var emergencyContactName: String?
+    var emergencyContactPhone: String?
 
     @Relationship(deleteRule: .cascade, inverse: \FeedingRecord.child)
     var feedings: [FeedingRecord] = []
@@ -40,18 +43,49 @@ final class Child {
     @Relationship(deleteRule: .cascade, inverse: \MedicineRecord.child)
     var medicineRecords: [MedicineRecord] = []
 
-    init(id: UUID = UUID(), name: String, birthDate: Date, gender: Gender, color: ChildColor) {
+    @Relationship(deleteRule: .cascade, inverse: \VaccineRecord.child)
+    var vaccineRecords: [VaccineRecord] = []
+
+    @Relationship(deleteRule: .cascade, inverse: \FetalMovementRecord.child)
+    var fetalMovementRecords: [FetalMovementRecord] = []
+
+    @Relationship(deleteRule: .cascade, inverse: \BloodPressureRecord.child)
+    var bloodPressureRecords: [BloodPressureRecord] = []
+
+    @Relationship(deleteRule: .cascade, inverse: \BloodSugarRecord.child)
+    var bloodSugarRecords: [BloodSugarRecord] = []
+
+    @Relationship(deleteRule: .cascade, inverse: \PregnancyWeightRecord.child)
+    var pregnancyWeightRecords: [PregnancyWeightRecord] = []
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        birthDate: Date,
+        gender: Gender,
+        color: ChildColor,
+        profileType: ProfileType = .baby,
+        emergencyContactName: String? = nil,
+        emergencyContactPhone: String? = nil
+    ) {
         self.id = id
         self.name = name
         self.birthDate = birthDate
         self.genderRaw = gender.rawValue
         self.colorRaw = color.rawValue
+        self.profileTypeRaw = profileType.rawValue
+        self.emergencyContactName = emergencyContactName
+        self.emergencyContactPhone = emergencyContactPhone
     }
 
     // MARK: - Enums
 
     enum Gender: String, Codable {
         case male, female
+    }
+
+    enum ProfileType: String, Codable {
+        case pregnancy, baby
     }
 
     enum ChildColor: String, CaseIterable, Codable {
@@ -82,13 +116,22 @@ final class Child {
         set { colorRaw = newValue.rawValue }
     }
 
+    var profileType: ProfileType {
+        get { ProfileType(rawValue: profileTypeRaw) ?? (birthDate > Date() ? .pregnancy : .baby) }
+        set { profileTypeRaw = newValue.rawValue }
+    }
+
     var ageInDays: Int {
         Calendar.current.dateComponents([.day], from: birthDate, to: .now).day ?? 0
     }
 
-    var isNewborn: Bool { ageInDays < 365 }
+    var isNewborn: Bool { ageInDays >= 0 && ageInDays < 365 }
 
     var ageDisplay: String {
+        if profileType == .pregnancy {
+            return "孕\(pregnancyWeekDisplay) · 距预产期\(daysUntilDueDate)天"
+        }
+
         let d = ageInDays
         if d < 30 { return "\(d)天" }
         if d < 365 {

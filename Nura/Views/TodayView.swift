@@ -3,6 +3,7 @@
 
 import SwiftUI
 import SwiftData
+import Combine
 
 // MARK: - TodayView
 
@@ -16,25 +17,23 @@ struct TodayView: View {
     @Query private var allJaundice: [JaundiceRecord]
     @Query private var allTemperatures: [TemperatureRecord]
     @Query private var allBreathing: [BreathingRecord]
+    @Query private var allFetalMovements: [FetalMovementRecord]
+    @Query private var allBloodPressures: [BloodPressureRecord]
+    @Query private var allBloodSugars: [BloodSugarRecord]
+    @Query private var allPregnancyWeights: [PregnancyWeightRecord]
+    @Query private var allVaccines: [VaccineRecord]
 
-    @State private var logType: LogType?
-
-    enum LogType: String, Identifiable {
-        case feeding = "喂奶"
-        case diaper = "换尿布"
-        case sleep = "睡眠"
-        case jaundice = "黄疸"
-        case growth = "生长记录"
-        case medicine = "用药记录"
-        case temperature = "体温记录"
-        case breathing = "呼吸记录"
-        var id: String { rawValue }
-    }
+    @State private var logType: NuraLogType?
+    @State private var showBirthBabySheet = false
 
     var selectedChild: Child? {
         guard let id = selectedChildId else { return children.first }
         // Ensure the child still exists and hasn't been deleted
         return children.first(where: { $0.id == id }) ?? children.first
+    }
+
+    var selectedStage: CareStage {
+        selectedChild?.careStage ?? .infant
     }
 
     private var todayStart: Date { Calendar.current.startOfDay(for: Date()) }
@@ -83,6 +82,31 @@ struct TodayView: View {
             .sorted { $0.timestamp > $1.timestamp }
     }
 
+    var recentFetalMovements: [FetalMovementRecord] {
+        guard let child = selectedChild else { return [] }
+        return allFetalMovements.filter { $0.child?.id == child.id }.sorted { $0.timestamp > $1.timestamp }
+    }
+
+    var recentBloodPressures: [BloodPressureRecord] {
+        guard let child = selectedChild else { return [] }
+        return allBloodPressures.filter { $0.child?.id == child.id }.sorted { $0.timestamp > $1.timestamp }
+    }
+
+    var recentBloodSugars: [BloodSugarRecord] {
+        guard let child = selectedChild else { return [] }
+        return allBloodSugars.filter { $0.child?.id == child.id }.sorted { $0.timestamp > $1.timestamp }
+    }
+
+    var recentPregnancyWeights: [PregnancyWeightRecord] {
+        guard let child = selectedChild else { return [] }
+        return allPregnancyWeights.filter { $0.child?.id == child.id }.sorted { $0.timestamp > $1.timestamp }
+    }
+
+    var childVaccines: [VaccineRecord] {
+        guard let child = selectedChild else { return [] }
+        return allVaccines.filter { $0.child?.id == child.id }
+    }
+
     var totalSleepHours: Double {
         todaySleeps.compactMap(\.durationHours).reduce(0, +)
     }
@@ -102,26 +126,61 @@ struct TodayView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
-                    TodayOverviewCard(
-                        feedCount: todayFeedings.count,
-                        totalMl: totalFeedingMl,
-                        diaperCount: todayDiapers.count,
-                        sleepDisplay: sleepDisplay,
-                        latestTemperature: todayTemperatures.first,
-                        latestBreathing: todayBreathing.first
-                    )
-                    FeedingCard(records: todayFeedings)
-                    SleepCard(records: todaySleeps, totalHours: totalSleepHours)
-                    DiaperCard(records: todayDiapers)
-                    TemperatureCard(records: todayTemperatures, onAddTap: { logType = .temperature })
-                    BreathingCard(records: todayBreathing, child: selectedChild, onAddTap: { logType = .breathing })
-                    
-                    // 黄疸卡片 - 只在有新生儿时显示
-                    if let child = selectedChild, child.isNewborn {
-                        JaundiceCard(records: recentJaundice, onAddTap: { logType = .jaundice })
+                    if let child = selectedChild {
+                        StageHeaderCard(child: child)
                     }
-                    
-                    QuickLogGrid { type in logType = type }
+
+                    switch selectedStage {
+                    case .pregnancy:
+                        if let child = selectedChild {
+                            PregnancyTodayCard(child: child, onDelivered: { showBirthBabySheet = true })
+                            PregnancySizeCard(child: child)
+                            PregnancyVitalsCard(
+                                fetalMovement: recentFetalMovements.first,
+                                bloodPressure: recentBloodPressures.first,
+                                bloodSugar: recentBloodSugars.first,
+                                weight: recentPregnancyWeights.first
+                            )
+                            PrenatalCheckupCard(child: child)
+                            EmergencySOSCard(child: child)
+                        }
+                        TemperatureCard(records: todayTemperatures, onAddTap: { logType = .temperature })
+                    case .infant:
+                        TodayOverviewCard(
+                            feedCount: todayFeedings.count,
+                            totalMl: totalFeedingMl,
+                            diaperCount: todayDiapers.count,
+                            sleepDisplay: sleepDisplay,
+                            latestTemperature: todayTemperatures.first,
+                            latestBreathing: todayBreathing.first
+                        )
+                        FeedingCard(records: todayFeedings)
+                        SleepCard(records: todaySleeps, totalHours: totalSleepHours)
+                        DiaperCard(records: todayDiapers)
+                        TemperatureCard(records: todayTemperatures, onAddTap: { logType = .temperature })
+                        BreathingCard(records: todayBreathing, child: selectedChild, onAddTap: { logType = .breathing })
+                        if let child = selectedChild {
+                            VaccineReminderCard(child: child, records: childVaccines, onAddTap: { logType = .vaccine })
+                        }
+                        if let child = selectedChild, child.isNewborn {
+                            JaundiceCard(records: recentJaundice, onAddTap: { logType = .jaundice })
+                        }
+                    case .child:
+                        ChildTodayFocusCard(
+                            child: selectedChild,
+                            sleepDisplay: sleepDisplay,
+                            latestTemperature: todayTemperatures.first,
+                            latestBreathing: todayBreathing.first
+                        )
+                        SleepCard(records: todaySleeps, totalHours: totalSleepHours)
+                        TemperatureCard(records: todayTemperatures, onAddTap: { logType = .temperature })
+                        BreathingCard(records: todayBreathing, child: selectedChild, onAddTap: { logType = .breathing })
+                        if let child = selectedChild {
+                            VaccineReminderCard(child: child, records: childVaccines, onAddTap: { logType = .vaccine })
+                        }
+                    }
+
+                    QuickLogGrid(stage: selectedStage) { type in logType = type }
                     Spacer(minLength: 20)
                 }
                 .padding(.horizontal, 16)
@@ -145,7 +204,7 @@ struct TodayView: View {
                     ChildSwitcherView(selectedChildId: $selectedChildId)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { logType = .feeding } label: {
+                    Button { logType = selectedStage.primaryLogType } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.white)
@@ -159,6 +218,11 @@ struct TodayView: View {
         .sheet(item: $logType) { type in
             QuickLogSheet(logType: type, selectedChild: selectedChild)
         }
+        .sheet(isPresented: $showBirthBabySheet) {
+            if let pregnancy = selectedChild {
+                BirthBabySheet(pregnancy: pregnancy, selectedChildId: $selectedChildId)
+            }
+        }
     }
 
     var todayDateDisplay: String {
@@ -166,6 +230,462 @@ struct TodayView: View {
         f.locale = Locale(identifier: "zh_CN")
         f.dateFormat = "M月d日 EEEE"
         return f.string(from: Date())
+    }
+}
+
+// MARK: - Stage Cards
+
+struct PregnancyTodayCard: View {
+    var child: Child
+    var onDelivered: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionLabel(icon: "calendar.badge.clock", title: "孕期概览", iconColor: child.careStage.color)
+            HStack(spacing: 8) {
+                StatBox(
+                    label: "当前孕周",
+                    value: child.pregnancyWeekDisplay,
+                    unit: "",
+                    color: child.careStage.color,
+                    icon: "heart.circle.fill"
+                )
+                StatBox(
+                    label: "距预产期",
+                    value: "\(child.daysUntilDueDate)",
+                    unit: "天",
+                    color: .nuraBlue,
+                    icon: "calendar"
+                )
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Label("今日重点", systemImage: "checklist")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Text("记录体温、用药和产检相关变化；出生后系统会自动切换到婴儿界面。")
+                    .font(.nuraCaption())
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .background(child.careStage.color.opacity(0.07))
+            .cornerRadius(12)
+
+            Button(action: onDelivered) {
+                Label("生了宝宝", systemImage: "sparkles")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(child.careStage.color)
+                    .cornerRadius(14)
+            }
+            .buttonStyle(.plain)
+        }
+        .nuraCard()
+    }
+}
+
+struct BirthBabySheet: View {
+    var pregnancy: Child
+    @Binding var selectedChildId: UUID?
+
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name = ""
+    @State private var birthDate = Date()
+    @State private var gender: Child.Gender = .female
+    @State private var color: Child.ChildColor = .pink
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("孕期档案会继续保留，系统会新建一个宝宝档案。宝宝信息可以先不填完整，之后可在档案列表中编辑。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("宝宝信息") {
+                    TextField("宝宝名字（可选）", text: $name)
+                    DatePicker("出生日期", selection: $birthDate, in: Date.distantPast...Date(), displayedComponents: .date)
+                }
+
+                Section("性别") {
+                    Picker("性别", selection: $gender) {
+                        Text("女").tag(Child.Gender.female)
+                        Text("男").tag(Child.Gender.male)
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                Section("主题颜色") {
+                    HStack(spacing: 12) {
+                        ForEach(Child.ChildColor.allCases, id: \.self) { c in
+                            ZStack {
+                                Circle().fill(c.swatch).frame(width: 36, height: 36)
+                                if color == c {
+                                    Circle().strokeBorder(.white, lineWidth: 3).frame(width: 36, height: 36)
+                                    Circle().strokeBorder(c.swatch, lineWidth: 1.5).frame(width: 42, height: 42)
+                                }
+                            }
+                            .onTapGesture { withAnimation { color = c } }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .navigationTitle("宝宝出生啦")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }.foregroundStyle(.secondary)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("生成宝宝") { createBaby() }
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.nuraPrimary)
+                }
+            }
+        }
+        .tint(.nuraPrimary)
+    }
+
+    private func createBaby() {
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let baby = Child(
+            name: trimmedName.isEmpty ? "宝宝" : trimmedName,
+            birthDate: birthDate,
+            gender: gender,
+            color: color,
+            profileType: .baby,
+            emergencyContactName: pregnancy.emergencyContactName,
+            emergencyContactPhone: pregnancy.emergencyContactPhone
+        )
+        modelContext.insert(baby)
+        selectedChildId = baby.id
+        dismiss()
+    }
+}
+
+struct PregnancySizeCard: View {
+    var child: Child
+
+    var body: some View {
+        let info = child.pregnancySizeInfo
+
+        VStack(alignment: .leading, spacing: 14) {
+            SectionLabel(icon: "chart.bar.fill", title: "宝宝大小", iconColor: info.color)
+
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(info.color.opacity(0.12))
+                        .frame(width: 112, height: 112)
+                    Circle()
+                        .stroke(info.color.opacity(0.22), lineWidth: 10)
+                        .frame(width: 88, height: 88)
+                    Image(systemName: info.icon)
+                        .font(.system(size: 42, weight: .bold))
+                        .foregroundStyle(info.color)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("像\(info.sizeName)一样大")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(.primary)
+                    HStack(spacing: 8) {
+                        NuraBadge(text: info.lengthText, color: info.color)
+                        NuraBadge(text: info.weightText, color: .nuraBlue)
+                    }
+                    Text(info.situation)
+                        .font(.nuraCaption())
+                        .foregroundStyle(.secondary)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+
+            PregnancyProgressBar(week: child.gestationalWeek, color: info.color)
+        }
+        .nuraCard()
+    }
+}
+
+struct PregnancyProgressBar: View {
+    var week: Int
+    var color: Color
+
+    var progress: CGFloat {
+        min(max(CGFloat(week) / 40.0, 0), 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color(UIColor.tertiarySystemFill))
+                    Capsule()
+                        .fill(color)
+                        .frame(width: geo.size.width * progress)
+                }
+            }
+            .frame(height: 10)
+
+            HStack {
+                Text("1周")
+                Spacer()
+                Text("当前 \(week)周")
+                    .fontWeight(.semibold)
+                    .foregroundStyle(color)
+                Spacer()
+                Text("40周")
+            }
+            .font(.system(size: 10, design: .rounded))
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct EmergencySOSCard: View {
+    var child: Child
+
+    private var phoneNumber: String? {
+        child.emergencyContactPhone?.filter { $0.isNumber || $0 == "+" }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(icon: "phone.fill", title: "紧急联系人", iconColor: .nuraDanger)
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(child.emergencyContactName ?? "未填写联系人")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    Text(child.emergencyContactPhone ?? "可在新增孕妇信息时填写")
+                        .font(.nuraCaption())
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let phoneNumber, !phoneNumber.isEmpty, let url = URL(string: "tel://\(phoneNumber)") {
+                    Link(destination: url) {
+                        Label("SOS", systemImage: "phone.fill")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 18)
+                            .frame(height: 42)
+                            .background(Color.nuraDanger)
+                            .cornerRadius(12)
+                    }
+                } else {
+                    Label("SOS", systemImage: "phone.fill")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 18)
+                        .frame(height: 42)
+                        .background(Color(UIColor.tertiarySystemFill))
+                        .cornerRadius(12)
+                }
+            }
+        }
+        .nuraCard()
+    }
+}
+
+struct PregnancyVitalsCard: View {
+    var fetalMovement: FetalMovementRecord?
+    var bloodPressure: BloodPressureRecord?
+    var bloodSugar: BloodSugarRecord?
+    var weight: PregnancyWeightRecord?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(icon: "waveform.path.ecg", title: "孕期记录", iconColor: Color(hex: "EC4899"))
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                OverviewTextBox(label: "胎动", value: fetalMovement.map { "\($0.count)次 · \($0.durationDisplay)" } ?? "暂无记录", color: Color(hex: "EC4899"), icon: "hand.tap.fill")
+                OverviewTextBox(label: "血压", value: bloodPressure.map { "\($0.valueDisplay) · \($0.status)" } ?? "暂无记录", color: Color(hex: "DC2626"), icon: "heart.text.square.fill")
+                OverviewTextBox(label: "血糖", value: bloodSugar.map { "\($0.valueDisplay) · \($0.timing.rawValue)" } ?? "暂无记录", color: Color(hex: "06B6D4"), icon: "drop.degreesign.fill")
+                OverviewTextBox(label: "体重", value: weight?.valueDisplay ?? "暂无记录", color: Color(hex: "8B5CF6"), icon: "scalemass.fill")
+            }
+        }
+        .nuraCard()
+    }
+}
+
+struct PrenatalCheckupCard: View {
+    var child: Child
+    @State private var showHistory = false
+
+    private var currentAndNext: [PrenatalCheckupItem] {
+        PrenatalCheckupItem.upcoming(for: child.gestationalWeek, within: 1)
+    }
+
+    private var history: [PrenatalCheckupItem] {
+        Array(PrenatalCheckupItem.history(before: child.gestationalWeek).prefix(6))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                SectionLabel(icon: "stethoscope", title: "产检提醒", iconColor: .nuraBlue)
+                Spacer()
+                if !history.isEmpty {
+                    Button(showHistory ? "收起" : "回顾") {
+                        withAnimation(.spring(response: 0.25)) { showHistory.toggle() }
+                    }
+                    .font(.nuraCaption())
+                    .foregroundStyle(.nuraBlue)
+                }
+            }
+
+            if currentAndNext.isEmpty {
+                EmptyStateRow(text: "本周和下周暂无固定产检项目")
+            } else {
+                ForEach(currentAndNext) { item in
+                    PrenatalCheckupRow(item: item, isHistory: false)
+                }
+            }
+
+            if showHistory {
+                Divider()
+                ForEach(history) { item in
+                    PrenatalCheckupRow(item: item, isHistory: true)
+                }
+            }
+        }
+        .nuraCard()
+    }
+}
+
+struct PrenatalCheckupRow: View {
+    var item: PrenatalCheckupItem
+    var isHistory: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill((isHistory ? Color.nuraSuccess : Color.nuraBlue).opacity(0.12))
+                    .frame(width: 38, height: 38)
+                Text("\(item.week)")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(isHistory ? .nuraSuccess : .nuraBlue)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                Text(item.details.joined(separator: " · "))
+                    .font(.nuraCaption())
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct ChildTodayFocusCard: View {
+    var child: Child?
+    var sleepDisplay: String
+    var latestTemperature: TemperatureRecord?
+    var latestBreathing: BreathingRecord?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(icon: "figure.and.child.holdinghands", title: "儿童今日重点", iconColor: child?.careStage.color ?? .nuraBlue)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                StatBox(label: "睡眠", value: sleepDisplay, unit: "", color: Color(hex: "818CF8"), icon: "moon.fill")
+                OverviewTextBox(label: "最近体温", value: latestTemperature?.temperatureDisplay ?? "今日无体温数据", color: Color(hex: "EF4444"), icon: "thermometer.medium")
+                OverviewTextBox(label: "呼吸记录", value: latestBreathing?.rateDisplay ?? "今日无呼吸记录", color: Color(hex: "14B8A6"), icon: "lungs.fill")
+                OverviewTextBox(label: "成长记录", value: "身高、体重、头围", color: .nuraSuccess, icon: "chart.line.uptrend.xyaxis")
+            }
+        }
+        .nuraCard()
+    }
+}
+
+struct VaccineReminderCard: View {
+    var child: Child
+    var records: [VaccineRecord]
+    var onAddTap: () -> Void
+
+    private var reminders: [VaccineReminderItem] {
+        vaccineReminders(for: child, records: records)
+    }
+
+    private var visibleReminders: [VaccineReminderItem] {
+        let pending = reminders.filter { !$0.isCompleted }
+        return Array((pending.isEmpty ? reminders : pending).prefix(3))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                SectionLabel(icon: "syringe.fill", title: "疫苗提醒", iconColor: Color(hex: "10B981"))
+                Spacer()
+                Button(action: onAddTap) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Color(hex: "10B981"))
+                }
+                .buttonStyle(.plain)
+            }
+
+            if visibleReminders.isEmpty {
+                EmptyStateRow(text: "暂无疫苗计划")
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(visibleReminders) { reminder in
+                        VaccineReminderRow(reminder: reminder)
+                    }
+                }
+            }
+        }
+        .nuraCard()
+    }
+}
+
+struct VaccineReminderRow: View {
+    var reminder: VaccineReminderItem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(reminder.status.color.opacity(0.12))
+                    .frame(width: 38, height: 38)
+                Image(systemName: reminder.status.iconName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(reminder.status.color)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(reminder.schedule.name) \(reminder.schedule.dose)")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                Text("\(reminder.schedule.dueAgeDisplay) · \(reminder.dueText) · \(reminder.schedule.note)")
+                    .font(.nuraCaption())
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+func vaccineReminders(for child: Child, records: [VaccineRecord]) -> [VaccineReminderItem] {
+    let recordsByKey = Dictionary(grouping: records, by: \.scheduleKey)
+    return VaccineScheduleItem.standard.map { schedule in
+        let record = recordsByKey[schedule.key]?.sorted {
+            ($0.completedDate ?? $0.scheduledDate) > ($1.completedDate ?? $1.scheduledDate)
+        }.first
+        return VaccineReminderItem(
+            schedule: schedule,
+            record: record,
+            dueDate: record?.scheduledDate ?? schedule.dueDate(for: child)
+        )
     }
 }
 
@@ -548,16 +1068,22 @@ struct DiaperChip: View {
     @State private var showDeleteConfirmation = false
     
     var body: some View {
-        HStack(spacing: 4) {
-            Text(record.type.emoji).font(.system(size: 14))
+        HStack(spacing: 6) {
+            Image(systemName: record.type.iconName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(record.type.color)
             Text(record.timeDisplay)
-                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundStyle(record.type.color)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(record.type.color.opacity(0.08))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(record.type.color.opacity(0.12))
         .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(record.type.color.opacity(0.3), lineWidth: 1)
+        )
         .contentShape(Rectangle())
         .contextMenu {
             Button(role: .destructive) {
@@ -914,18 +1440,10 @@ struct JaundiceCard: View {
 // MARK: - QuickLogGrid
 
 struct QuickLogGrid: View {
-    var onTap: (TodayView.LogType) -> Void
+    var stage: CareStage
+    var onTap: (NuraLogType) -> Void
 
-    private let items: [(icon: String, title: String, color: Color, type: TodayView.LogType)] = [
-        ("drop.fill", "喂奶",  .nuraPrimary,          .feeding),
-        ("sparkles", "尿布",  .nuraBlue,              .diaper),
-        ("moon.fill", "睡眠",  Color(hex: "818CF8"),   .sleep),
-        ("sun.max.fill", "黄疸", .nuraWarning,          .jaundice),
-        ("chart.line.uptrend.xyaxis", "生长", .nuraSuccess, .growth),
-        ("pills.fill", "用药", Color(hex: "F59E0B"),   .medicine),
-        ("thermometer.medium", "体温", Color(hex: "EF4444"), .temperature),
-        ("lungs.fill", "呼吸", Color(hex: "14B8A6"), .breathing),
-    ]
+    private var items: [NuraLogType] { stage.logTypes }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -943,9 +1461,9 @@ struct QuickLogGrid: View {
                 columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3),
                 spacing: 10
             ) {
-                ForEach(items, id: \.title) { item in
-                    QuickLogButton(icon: item.icon, title: item.title, color: item.color) {
-                        onTap(item.type)
+                ForEach(items) { item in
+                    QuickLogButton(icon: item.icon, title: item.shortTitle, color: item.color) {
+                        onTap(item)
                     }
                 }
             }
@@ -989,8 +1507,10 @@ struct QuickLogButton: View {
 // MARK: - QuickLogSheet
 
 struct QuickLogSheet: View {
-    var logType: TodayView.LogType
+    var logType: NuraLogType
     var selectedChild: Child?
+
+    @Query private var allVaccineRecords: [VaccineRecord]
 
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) var modelContext
@@ -1021,6 +1541,17 @@ struct QuickLogSheet: View {
     @State private var medicineUnit: String = "ml"
     @State private var reason: String = ""
     @State private var notes: String = ""
+    @State private var fetalMovementCount = 0
+    @State private var fetalMovementTargetMinutes = 60
+    @State private var fetalMovementElapsedSeconds = 0
+    @State private var bloodPressureSystolic: Double = 120
+    @State private var bloodPressureDiastolic: Double = 80
+    @State private var bloodSugar: Double = 5.1
+    @State private var bloodSugarTiming: BloodSugarTiming = .fasting
+    @State private var pregnancyWeight: Double = 60
+    @State private var selectedVaccineKey: String = VaccineScheduleItem.standard.first?.key ?? ""
+    @State private var vaccineCompletedDate = Date()
+    @State private var vaccineNotes = ""
 
     var body: some View {
         NavigationStack {
@@ -1076,6 +1607,36 @@ struct QuickLogSheet: View {
                                 notes: $notes,
                                 time: $time
                             )
+                        case .vaccine:
+                            VaccineLogForm(
+                                child: selectedChild,
+                                records: selectedChild.map { child in
+                                    allVaccineRecords.filter { $0.child?.id == child.id }
+                                } ?? [],
+                                selectedKey: $selectedVaccineKey,
+                                completedDate: $vaccineCompletedDate,
+                                notes: $vaccineNotes
+                            )
+                        case .fetalMovement:
+                            FetalMovementLogForm(
+                                count: $fetalMovementCount,
+                                targetMinutes: $fetalMovementTargetMinutes,
+                                elapsedSeconds: $fetalMovementElapsedSeconds
+                            )
+                        case .bloodPressure:
+                            BloodPressureLogForm(
+                                systolic: $bloodPressureSystolic,
+                                diastolic: $bloodPressureDiastolic,
+                                time: $time
+                            )
+                        case .bloodSugar:
+                            BloodSugarLogForm(
+                                glucose: $bloodSugar,
+                                timing: $bloodSugarTiming,
+                                time: $time
+                            )
+                        case .pregnancyWeight:
+                            PregnancyWeightLogForm(weight: $pregnancyWeight, time: $time)
                         }
                     }
                     .padding(.horizontal, 20)
@@ -1176,6 +1737,56 @@ struct QuickLogSheet: View {
                 child: child
             )
             modelContext.insert(record)
+        case .vaccine:
+            guard let schedule = VaccineScheduleItem.standard.first(where: { $0.key == selectedVaccineKey }) else {
+                dismiss()
+                return
+            }
+            let existingRecord = allVaccineRecords.first {
+                $0.child?.id == child.id && $0.scheduleKey == schedule.key
+            }
+            if let existingRecord {
+                existingRecord.completedDate = vaccineCompletedDate
+                existingRecord.notes = vaccineNotes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            } else {
+                modelContext.insert(VaccineRecord(
+                    scheduleKey: schedule.key,
+                    vaccineName: schedule.name,
+                    dose: schedule.dose,
+                    scheduledDate: schedule.dueDate(for: child),
+                    completedDate: vaccineCompletedDate,
+                    notes: vaccineNotes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                    child: child
+                ))
+            }
+        case .fetalMovement:
+            modelContext.insert(FetalMovementRecord(
+                timestamp: Date(),
+                count: fetalMovementCount,
+                durationMinutes: fetalMovementTargetMinutes,
+                actualSeconds: max(fetalMovementElapsedSeconds, 60),
+                child: child
+            ))
+        case .bloodPressure:
+            modelContext.insert(BloodPressureRecord(
+                timestamp: time,
+                systolic: Int(bloodPressureSystolic),
+                diastolic: Int(bloodPressureDiastolic),
+                child: child
+            ))
+        case .bloodSugar:
+            modelContext.insert(BloodSugarRecord(
+                timestamp: time,
+                glucose: bloodSugar,
+                timing: bloodSugarTiming,
+                child: child
+            ))
+        case .pregnancyWeight:
+            modelContext.insert(PregnancyWeightRecord(
+                timestamp: time,
+                weightKg: pregnancyWeight,
+                child: child
+            ))
         }
         dismiss()
     }
@@ -1556,6 +2167,149 @@ struct BreathingLogForm: View {
     }
 }
 
+struct FetalMovementLogForm: View {
+    @Binding var count: Int
+    @Binding var targetMinutes: Int
+    @Binding var elapsedSeconds: Int
+    @State private var isRunning = false
+
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private var targetSeconds: Int { targetMinutes * 60 }
+    private var remainingSeconds: Int { max(targetSeconds - elapsedSeconds, 0) }
+    private var progress: CGFloat { min(CGFloat(elapsedSeconds) / CGFloat(max(targetSeconds, 1)), 1) }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            VStack(spacing: 12) {
+                Text("计时时长").nuraSectionHeader()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Stepper("\(targetMinutes) 分钟", value: $targetMinutes, in: 10...120, step: 5)
+                    .font(.nuraBody())
+                    .disabled(isRunning)
+            }
+            .nuraCard()
+
+            VStack(spacing: 18) {
+                ZStack {
+                    Circle()
+                        .stroke(Color(UIColor.tertiarySystemFill), lineWidth: 16)
+                    Circle()
+                        .trim(from: 0, to: progress)
+                        .stroke(Color(hex: "EC4899"), style: StrokeStyle(lineWidth: 16, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    VStack(spacing: 8) {
+                        Text(timeText(remainingSeconds))
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                        Text("已记录 \(count) 次")
+                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color(hex: "EC4899"))
+                    }
+                }
+                .frame(width: 210, height: 210)
+
+                Button {
+                    if !isRunning && elapsedSeconds == 0 { isRunning = true }
+                    count += 1
+                } label: {
+                    Label("胎动 +1", systemImage: "hand.tap.fill")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 64)
+                        .background(Color(hex: "EC4899"))
+                        .cornerRadius(18)
+                }
+                .buttonStyle(.plain)
+
+                HStack(spacing: 10) {
+                    Button(isRunning ? "暂停" : "开始") {
+                        isRunning.toggle()
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(Color(UIColor.tertiarySystemFill))
+                    .cornerRadius(12)
+
+                    Button("重置") {
+                        isRunning = false
+                        elapsedSeconds = 0
+                        count = 0
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(Color(UIColor.tertiarySystemFill))
+                    .cornerRadius(12)
+                }
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+            }
+            .nuraCard()
+        }
+        .onReceive(timer) { _ in
+            guard isRunning else { return }
+            if elapsedSeconds < targetSeconds {
+                elapsedSeconds += 1
+            } else {
+                isRunning = false
+            }
+        }
+    }
+
+    private func timeText(_ seconds: Int) -> String {
+        String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+struct BloodPressureLogForm: View {
+    @Binding var systolic: Double
+    @Binding var diastolic: Double
+    @Binding var time: Date
+
+    var body: some View {
+        VStack(spacing: 14) {
+            SliderFormCard(title: "收缩压", unit: "mmHg", value: $systolic, range: 80...180, step: 1, color: Color(hex: "DC2626"))
+            SliderFormCard(title: "舒张压", unit: "mmHg", value: $diastolic, range: 40...120, step: 1, color: Color(hex: "F97316"))
+            TimePickerCard(time: $time)
+        }
+    }
+}
+
+struct BloodSugarLogForm: View {
+    @Binding var glucose: Double
+    @Binding var timing: BloodSugarTiming
+    @Binding var time: Date
+
+    var body: some View {
+        VStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("测量时机").nuraSectionHeader()
+                Picker("测量时机", selection: $timing) {
+                    ForEach(BloodSugarTiming.allCases) { timing in
+                        Text(timing.rawValue).tag(timing)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            .nuraCard()
+            SliderFormCard(title: "血糖", unit: "mmol/L", value: $glucose, range: 3...15, step: 0.1, color: Color(hex: "06B6D4"))
+            TimePickerCard(time: $time)
+        }
+    }
+}
+
+struct PregnancyWeightLogForm: View {
+    @Binding var weight: Double
+    @Binding var time: Date
+
+    var body: some View {
+        VStack(spacing: 14) {
+            SliderFormCard(title: "孕期体重", unit: "kg", value: $weight, range: 35...120, step: 0.1, color: Color(hex: "8B5CF6"))
+            TimePickerCard(time: $time)
+        }
+    }
+}
+
 struct GrowthLogForm: View {
     @Binding var weightKg: String
     @Binding var heightCm: String
@@ -1744,6 +2498,103 @@ struct MedicineLogForm: View {
                     .tint(.nuraPrimary)
             }
             .nuraCard()
+        }
+    }
+}
+
+struct VaccineLogForm: View {
+    var child: Child?
+    var records: [VaccineRecord]
+    @Binding var selectedKey: String
+    @Binding var completedDate: Date
+    @Binding var notes: String
+
+    private var reminders: [VaccineReminderItem] {
+        guard let child else { return [] }
+        return vaccineReminders(for: child, records: records)
+    }
+
+    private var selectedReminder: VaccineReminderItem? {
+        reminders.first { $0.schedule.key == selectedKey }
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("选择疫苗").nuraSectionHeader()
+                VStack(spacing: 8) {
+                    ForEach(reminders) { reminder in
+                        Button {
+                            selectedKey = reminder.schedule.key
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: selectedKey == reminder.schedule.key ? "checkmark.circle.fill" : reminder.status.iconName)
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(selectedKey == reminder.schedule.key ? Color(hex: "10B981") : reminder.status.color)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("\(reminder.schedule.name) \(reminder.schedule.dose)")
+                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(.primary)
+                                    Text("\(reminder.schedule.dueAgeDisplay) · \(reminder.dueText)")
+                                        .font(.nuraCaption())
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(12)
+                            .background(
+                                selectedKey == reminder.schedule.key
+                                    ? Color(hex: "10B981").opacity(0.1)
+                                    : Color(UIColor.tertiarySystemFill)
+                            )
+                            .cornerRadius(12)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .nuraCard()
+
+            HStack {
+                Label("接种日期", systemImage: "calendar")
+                    .font(.nuraBody())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                DatePicker("", selection: $completedDate, in: Date.distantPast...Date(), displayedComponents: .date)
+                    .labelsHidden()
+                    .tint(.nuraPrimary)
+            }
+            .nuraCard()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("备注（可选）").nuraSectionHeader()
+                TextField("如：接种地点、批号、反应", text: $notes, axis: .vertical)
+                    .font(.nuraBody())
+                    .lineLimit(3)
+                    .padding()
+                    .background(Color(UIColor.secondarySystemGroupedBackground))
+                    .cornerRadius(12)
+            }
+            .nuraCard()
+
+            if let selectedReminder {
+                HStack(spacing: 8) {
+                    Image(systemName: "bell.badge.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: "10B981"))
+                    Text("保存后会根据接种完成情况，继续提醒下一针。")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .accessibilityLabel(selectedReminder.schedule.note)
+            }
+        }
+        .onAppear {
+            if selectedKey.isEmpty {
+                selectedKey = reminders.first(where: { !$0.isCompleted })?.schedule.key ?? reminders.first?.schedule.key ?? ""
+            }
         }
     }
 }

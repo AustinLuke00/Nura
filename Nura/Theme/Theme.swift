@@ -101,6 +101,12 @@ extension View {
     func nuraSectionHeader() -> some View { modifier(NuraSectionHeader()) }
 }
 
+extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
 // MARK: - Shared Components
 
 struct StatBox: View {
@@ -148,6 +154,8 @@ struct NuraBadge: View {
         Text(text)
             .font(.system(size: 10, weight: .semibold, design: .rounded))
             .foregroundStyle(color)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(color.opacity(0.12))
@@ -184,4 +192,3 @@ struct EmptyStateRow: View {
         .padding(.vertical, 8)
     }
 }
-

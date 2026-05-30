@@ -22,8 +22,13 @@ struct DataManager {
         try modelContext.delete(model: Milestone.self)
         try modelContext.delete(model: JaundiceRecord.self)
         try modelContext.delete(model: MedicineRecord.self)
+        try modelContext.delete(model: VaccineRecord.self)
         try modelContext.delete(model: TemperatureRecord.self)
         try modelContext.delete(model: BreathingRecord.self)
+        try modelContext.delete(model: FetalMovementRecord.self)
+        try modelContext.delete(model: BloodPressureRecord.self)
+        try modelContext.delete(model: BloodSugarRecord.self)
+        try modelContext.delete(model: PregnancyWeightRecord.self)
         
         // 保存更改
         try modelContext.save()

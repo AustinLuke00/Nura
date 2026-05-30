@@ -39,8 +39,13 @@ struct NuraApp: App {
             Milestone.self,
             JaundiceRecord.self,
             MedicineRecord.self,
+            VaccineRecord.self,
             TemperatureRecord.self,
-            BreathingRecord.self
+            BreathingRecord.self,
+            FetalMovementRecord.self,
+            BloodPressureRecord.self,
+            BloodSugarRecord.self,
+            PregnancyWeightRecord.self
         ])
     }
 }
@@ -127,6 +132,17 @@ struct WelcomeSheet: View {
     @State private var birthDate = Date()
     @State private var gender: Child.Gender = .female
     @State private var color: Child.ChildColor = .purple
+    @State private var profileType: Child.ProfileType = .baby
+    @State private var emergencyContactName = ""
+    @State private var emergencyContactPhone = ""
+
+    private var latestSelectableDate: Date {
+        Calendar.current.date(byAdding: .month, value: 10, to: Date()) ?? Date()
+    }
+
+    private var saveDisabled: Bool {
+        profileType == .baby && name.trimmingCharacters(in: .whitespaces).isEmpty
+    }
     
     enum WelcomeStep {
         case welcome
@@ -269,10 +285,10 @@ struct WelcomeSheet: View {
                         .font(.system(size: 40))
                         .foregroundStyle(.nuraPrimary)
                     
-                    Text("添加宝宝信息")
+                    Text(profileType == .pregnancy ? "添加孕妇信息" : "添加宝宝信息")
                         .font(.system(size: 24, weight: .bold, design: .rounded))
                     
-                    Text("让我们开始记录宝宝的成长故事")
+                    Text(profileType == .pregnancy ? "只需预产期，即可开始孕周追踪" : "让我们开始记录宝宝的成长故事")
                         .font(.system(size: 14, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
@@ -280,27 +296,43 @@ struct WelcomeSheet: View {
                 
                 // 表单
                 VStack(spacing: 16) {
-                    // 名字输入
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("宝宝名字", systemImage: "person.fill")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        
-                        TextField("请输入宝宝的名字", text: $name)
-                            .font(.system(size: 16, design: .rounded))
-                            .padding()
-                            .background(Color(UIColor.secondarySystemGroupedBackground))
-                            .cornerRadius(12)
+                    Picker("信息类型", selection: $profileType) {
+                        Label("宝宝信息", systemImage: "figure.child").tag(Child.ProfileType.baby)
+                        Label("孕妇信息", systemImage: "heart.circle.fill").tag(Child.ProfileType.pregnancy)
                     }
-                    
-                    // 出生日期
+                    .pickerStyle(.segmented)
+                    .padding(4)
+                    .background(Color(UIColor.secondarySystemGroupedBackground))
+                    .cornerRadius(12)
+
+                    if profileType == .baby {
+                        // 名字输入
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("宝宝名字", systemImage: "person.fill")
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+
+                            TextField("请输入宝宝的名字", text: $name)
+                                .font(.system(size: 16, design: .rounded))
+                                .padding()
+                                .background(Color(UIColor.secondarySystemGroupedBackground))
+                                .cornerRadius(12)
+                        }
+                    }
+
+                    // 出生日期 / 预产期
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("出生日期", systemImage: "calendar")
+                        Label(profileType == .pregnancy ? "预产期" : "出生日期", systemImage: "calendar")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .foregroundStyle(.secondary)
                         
                         HStack {
-                            DatePicker("", selection: $birthDate, in: ...Date(), displayedComponents: .date)
+                            DatePicker(
+                                "",
+                                selection: $birthDate,
+                                in: profileType == .pregnancy ? Date()...latestSelectableDate : Date.distantPast...Date(),
+                                displayedComponents: .date
+                            )
                                 .datePickerStyle(.compact)
                                 .labelsHidden()
                             Spacer()
@@ -309,52 +341,63 @@ struct WelcomeSheet: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color(UIColor.secondarySystemGroupedBackground))
                         .cornerRadius(12)
-                    }
-                    
-                    // 性别选择
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("性别", systemImage: "person.2.fill")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+
+                        Text(profileType == .pregnancy ? "孕期档案会根据预产期显示孕周、宝宝大小和孕期重点。" : "宝宝档案会根据年龄自动切换婴儿或儿童界面。")
+                            .font(.system(size: 11, design: .rounded))
                             .foregroundStyle(.secondary)
-                        
-                        HStack(spacing: 12) {
-                            GenderButton(
-                                title: "女宝宝",
-                                icon: "heart.circle.fill",
-                                isSelected: gender == .female
-                            ) {
-                                withAnimation { gender = .female }
-                            }
-                            
-                            GenderButton(
-                                title: "男宝宝",
-                                icon: "star.circle.fill",
-                                isSelected: gender == .male
-                            ) {
-                                withAnimation { gender = .male }
-                            }
-                        }
                     }
-                    
-                    // 主题颜色
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("主题颜色", systemImage: "paintpalette.fill")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        
-                        HStack(spacing: 16) {
-                            ForEach(Child.ChildColor.allCases, id: \.self) { c in
-                                ColorButton(color: c, isSelected: color == c) {
-                                    withAnimation(.spring(response: 0.3)) {
-                                        color = c
-                                    }
+
+                    if profileType == .pregnancy {
+                        EmergencyContactFields(
+                            name: $emergencyContactName,
+                            phone: $emergencyContactPhone
+                        )
+                    } else {
+                        // 性别选择
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("性别", systemImage: "person.2.fill")
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+
+                            HStack(spacing: 12) {
+                                GenderButton(
+                                    title: "女宝宝",
+                                    icon: "heart.circle.fill",
+                                    isSelected: gender == .female
+                                ) {
+                                    withAnimation { gender = .female }
+                                }
+
+                                GenderButton(
+                                    title: "男宝宝",
+                                    icon: "star.circle.fill",
+                                    isSelected: gender == .male
+                                ) {
+                                    withAnimation { gender = .male }
                                 }
                             }
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
-                        .cornerRadius(12)
+
+                        // 主题颜色
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("主题颜色", systemImage: "paintpalette.fill")
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+
+                            HStack(spacing: 16) {
+                                ForEach(Child.ChildColor.allCases, id: \.self) { c in
+                                    ColorButton(color: c, isSelected: color == c) {
+                                        withAnimation(.spring(response: 0.3)) {
+                                            color = c
+                                        }
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color(UIColor.secondarySystemGroupedBackground))
+                            .cornerRadius(12)
+                        }
                     }
                 }
                 .padding(.horizontal, 24)
@@ -369,17 +412,24 @@ struct WelcomeSheet: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(
-                            name.trimmingCharacters(in: .whitespaces).isEmpty
+                            saveDisabled
                                 ? Color.gray
                                 : Color.nuraPrimary
                         )
                         .cornerRadius(16)
                 }
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(saveDisabled)
                 .padding(.horizontal, 24)
                 .padding(.top, 8)
                 
                 Spacer(minLength: 40)
+            }
+        }
+        .onChange(of: profileType) { _, newValue in
+            if newValue == .pregnancy && birthDate < Date() {
+                birthDate = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
+            } else if newValue == .baby && birthDate > Date() {
+                birthDate = Date()
             }
         }
     }
@@ -388,9 +438,17 @@ struct WelcomeSheet: View {
     
     func saveChild() {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-        
-        let child = Child(name: trimmed, birthDate: birthDate, gender: gender, color: color)
+        guard profileType == .pregnancy || !trimmed.isEmpty else { return }
+
+        let child = Child(
+            name: profileType == .pregnancy ? "孕期档案" : trimmed,
+            birthDate: birthDate,
+            gender: gender,
+            color: profileType == .pregnancy ? .pink : color,
+            profileType: profileType,
+            emergencyContactName: emergencyContactName.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+            emergencyContactPhone: emergencyContactPhone.trimmingCharacters(in: .whitespaces).nilIfEmpty
+        )
         modelContext.insert(child)
         
         // 添加成功后延迟关闭
