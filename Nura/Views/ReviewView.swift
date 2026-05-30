@@ -2346,7 +2346,7 @@ struct BreathingHistoryView: View {
                                 icon: "lungs.fill",
                                 value: record.rateDisplay,
                                 label: status.label,
-                                detail: record.fullDateDisplay,
+                                detail: "\(record.countDisplay) · \(record.fullDateDisplay)",
                                 color: status.color,
                                 onDelete: { deleteRecord(record) }
                             )

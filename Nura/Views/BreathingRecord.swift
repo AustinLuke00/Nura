@@ -10,6 +10,8 @@ final class BreathingRecord {
     @Attribute(.unique) var id: UUID
     var timestamp: Date
     var breathsPerMinute: Int
+    var breathCount: Int?
+    var durationSeconds: Int?
     var notes: String?
     
     var child: Child?
@@ -17,17 +19,41 @@ final class BreathingRecord {
     init(id: UUID = UUID(),
          timestamp: Date = Date(),
          breathsPerMinute: Int,
+         breathCount: Int? = nil,
+         durationSeconds: Int = 60,
          notes: String? = nil,
          child: Child? = nil) {
         self.id = id
         self.timestamp = timestamp
         self.breathsPerMinute = breathsPerMinute
+        self.breathCount = breathCount ?? breathsPerMinute
+        self.durationSeconds = durationSeconds
         self.notes = notes
         self.child = child
     }
     
     var rateDisplay: String {
         "\(breathsPerMinute) 次/分"
+    }
+
+    var countDisplay: String {
+        "\(resolvedBreathCount) 次 / \(durationDisplay)"
+    }
+
+    var durationDisplay: String {
+        let secondsValue = resolvedDurationSeconds
+        if secondsValue < 60 { return "\(secondsValue)秒" }
+        let minutes = secondsValue / 60
+        let seconds = secondsValue % 60
+        return seconds > 0 ? "\(minutes)分\(seconds)秒" : "\(minutes)分钟"
+    }
+
+    private var resolvedBreathCount: Int {
+        breathCount ?? breathsPerMinute
+    }
+
+    private var resolvedDurationSeconds: Int {
+        max(durationSeconds ?? 60, 1)
     }
     
     var timeDisplay: String {

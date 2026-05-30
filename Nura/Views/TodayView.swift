@@ -1198,7 +1198,7 @@ struct BreathingCard: View {
                     icon: "lungs.fill",
                     value: latest.rateDisplay,
                     label: status.label,
-                    detail: latest.fullDateDisplay,
+                    detail: "\(latest.countDisplay) · \(latest.fullDateDisplay)",
                     color: status.color,
                     onDelete: { deleteRecord(latest) }
                 )
@@ -1516,7 +1516,9 @@ struct QuickLogSheet: View {
     @State private var jaundiceSite: JaundiceRecord.MeasurementSite = .forehead
     @State private var temperature: Double = 36.8
     @State private var temperatureSite: TemperatureSite = .armpit
-    @State private var breathingRate: Double = 30
+    @State private var breathingCount = 0
+    @State private var breathingTargetSeconds = 60
+    @State private var breathingElapsedSeconds = 0
     @State private var time: Date = Date()
     @State private var date: Date = Date()
     
@@ -1578,7 +1580,9 @@ struct QuickLogSheet: View {
                             )
                         case .breathing:
                             BreathingLogForm(
-                                rate: $breathingRate,
+                                count: $breathingCount,
+                                targetSeconds: $breathingTargetSeconds,
+                                elapsedSeconds: $breathingElapsedSeconds,
                                 time: $time
                             )
                         case .growth:
@@ -1687,9 +1691,13 @@ struct QuickLogSheet: View {
                 child: child
             ))
         case .breathing:
+            let measuredSeconds = max(breathingElapsedSeconds, min(breathingTargetSeconds, 60))
+            let rate = Int((Double(breathingCount) * 60.0 / Double(max(measuredSeconds, 1))).rounded())
             modelContext.insert(BreathingRecord(
                 timestamp: time,
-                breathsPerMinute: Int(breathingRate),
+                breathsPerMinute: rate,
+                breathCount: breathingCount,
+                durationSeconds: measuredSeconds,
                 child: child
             ))
         case .growth:
@@ -2127,25 +2135,101 @@ struct TemperatureLogForm: View {
 }
 
 struct BreathingLogForm: View {
-    @Binding var rate: Double
+    @Binding var count: Int
+    @Binding var targetSeconds: Int
+    @Binding var elapsedSeconds: Int
     @Binding var time: Date
+    @State private var isRunning = false
+
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private var remainingSeconds: Int { max(targetSeconds - elapsedSeconds, 0) }
+    private var progress: CGFloat { min(CGFloat(elapsedSeconds) / CGFloat(max(targetSeconds, 1)), 1) }
+    private var estimatedRate: Int {
+        let measuredSeconds = max(elapsedSeconds, min(targetSeconds, 60))
+        return Int((Double(count) * 60.0 / Double(max(measuredSeconds, 1))).rounded())
+    }
 
     var body: some View {
-        VStack(spacing: 14) {
-            SliderFormCard(
-                title: "呼吸频率",
-                unit: "次/分",
-                value: $rate,
-                range: 10...80,
-                step: 1,
-                color: Color(hex: "14B8A6")
-            )
+        VStack(spacing: 16) {
+            VStack(spacing: 12) {
+                Text("计时时长").nuraSectionHeader()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Picker("计时时长", selection: $targetSeconds) {
+                    Text("30秒").tag(30)
+                    Text("60秒").tag(60)
+                    Text("120秒").tag(120)
+                }
+                .pickerStyle(.segmented)
+                .disabled(isRunning)
+            }
+            .nuraCard()
+
+            VStack(spacing: 18) {
+                ZStack {
+                    Circle()
+                        .stroke(Color(UIColor.tertiarySystemFill), lineWidth: 16)
+                    Circle()
+                        .trim(from: 0, to: progress)
+                        .stroke(Color(hex: "14B8A6"), style: StrokeStyle(lineWidth: 16, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    VStack(spacing: 8) {
+                        Text(timeText(remainingSeconds))
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                        Text("已记录 \(count) 次")
+                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color(hex: "14B8A6"))
+                        Text("约 \(estimatedRate) 次/分")
+                            .font(.nuraCaption())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 210, height: 210)
+
+                Button {
+                    if !isRunning && elapsedSeconds == 0 { isRunning = true }
+                    count += 1
+                } label: {
+                    Label("呼吸 +1", systemImage: "lungs.fill")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 64)
+                        .background(Color(hex: "14B8A6"))
+                        .cornerRadius(18)
+                }
+                .buttonStyle(.plain)
+
+                HStack(spacing: 10) {
+                    Button(isRunning ? "暂停" : "开始") {
+                        isRunning.toggle()
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(Color(UIColor.tertiarySystemFill))
+                    .cornerRadius(12)
+
+                    Button("重置") {
+                        isRunning = false
+                        elapsedSeconds = 0
+                        count = 0
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(Color(UIColor.tertiarySystemFill))
+                    .cornerRadius(12)
+                }
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+            }
+            .nuraCard()
 
             HStack(spacing: 8) {
                 Image(systemName: "info.circle.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(Color(hex: "14B8A6"))
-                Text("请在宝宝安静状态下记录 1 分钟呼吸次数")
+                Text("让宝宝保持安静，每看到胸腹起伏一次点击一次。系统会自动换算为每分钟呼吸频率。")
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -2154,6 +2238,18 @@ struct BreathingLogForm: View {
 
             TimePickerCard(time: $time)
         }
+        .onReceive(timer) { _ in
+            guard isRunning else { return }
+            if elapsedSeconds < targetSeconds {
+                elapsedSeconds += 1
+            } else {
+                isRunning = false
+            }
+        }
+    }
+
+    private func timeText(_ seconds: Int) -> String {
+        String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
 }
 
@@ -2865,7 +2961,7 @@ struct AllBreathingRecordsView: View {
                         icon: "lungs.fill",
                         value: record.rateDisplay,
                         label: status.label,
-                        detail: record.fullDateDisplay,
+                        detail: "\(record.countDisplay) · \(record.fullDateDisplay)",
                         color: status.color,
                         onDelete: { deleteRecord(record) }
                     )
