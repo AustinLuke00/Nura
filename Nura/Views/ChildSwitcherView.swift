@@ -197,6 +197,8 @@ struct EditChildSheet: View {
     @State private var color: Child.ChildColor
     @State private var emergencyContactName: String
     @State private var emergencyContactPhone: String
+    @State private var deliveryDate: Date
+    @State private var hasDeliveryDate: Bool
 
     init(child: Child) {
         self.child = child
@@ -206,6 +208,8 @@ struct EditChildSheet: View {
         _color = State(initialValue: child.color)
         _emergencyContactName = State(initialValue: child.emergencyContactName ?? "")
         _emergencyContactPhone = State(initialValue: child.emergencyContactPhone ?? "")
+        _deliveryDate = State(initialValue: child.deliveryDate ?? Date())
+        _hasDeliveryDate = State(initialValue: child.deliveryDate != nil)
     }
 
     private var latestSelectableDate: Date {
@@ -237,6 +241,14 @@ struct EditChildSheet: View {
                 }
 
                 if child.profileType == .pregnancy {
+                    Section("生产状态") {
+                        Toggle("已经生产", isOn: $hasDeliveryDate)
+                            .tint(.nuraPrimary)
+                        if hasDeliveryDate {
+                            DatePicker("生产日期", selection: $deliveryDate, in: Date.distantPast...Date(), displayedComponents: .date)
+                        }
+                    }
+
                     Section("紧急联系人") {
                         TextField("联系人姓名", text: $emergencyContactName)
                         TextField("联系电话", text: $emergencyContactPhone)
@@ -292,6 +304,9 @@ struct EditChildSheet: View {
             child.color = color
         }
         child.birthDate = birthDate
+        if child.profileType == .pregnancy {
+            child.deliveryDate = hasDeliveryDate ? deliveryDate : nil
+        }
         child.emergencyContactName = emergencyContactName.trimmingCharacters(in: .whitespaces).nilIfEmpty
         child.emergencyContactPhone = emergencyContactPhone.trimmingCharacters(in: .whitespaces).nilIfEmpty
         dismiss()

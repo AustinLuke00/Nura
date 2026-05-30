@@ -15,6 +15,7 @@ final class Child {
     var profileTypeRaw: String = ProfileType.baby.rawValue
     var emergencyContactName: String?
     var emergencyContactPhone: String?
+    var deliveryDate: Date?
 
     @Relationship(deleteRule: .cascade, inverse: \FeedingRecord.child)
     var feedings: [FeedingRecord] = []
@@ -66,7 +67,8 @@ final class Child {
         color: ChildColor,
         profileType: ProfileType = .baby,
         emergencyContactName: String? = nil,
-        emergencyContactPhone: String? = nil
+        emergencyContactPhone: String? = nil,
+        deliveryDate: Date? = nil
     ) {
         self.id = id
         self.name = name
@@ -76,6 +78,7 @@ final class Child {
         self.profileTypeRaw = profileType.rawValue
         self.emergencyContactName = emergencyContactName
         self.emergencyContactPhone = emergencyContactPhone
+        self.deliveryDate = deliveryDate
     }
 
     // MARK: - Enums
@@ -129,6 +132,9 @@ final class Child {
 
     var ageDisplay: String {
         if profileType == .pregnancy {
+            if let deliveryDate {
+                return "已生产 · \(deliveryDate.nuraDateShortDisplay)"
+            }
             return "孕\(pregnancyWeekDisplay) · 距预产期\(daysUntilDueDate)天"
         }
 

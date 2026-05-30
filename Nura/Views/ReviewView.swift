@@ -152,7 +152,11 @@ struct ReviewView: View {
                     case .pregnancy:
                         PregnancyReviewHintCard(child: selectedChild)
                         if let child = selectedChild {
-                            PrenatalReviewCard(child: child)
+                            if child.hasDelivered {
+                                DeliveryReviewCard(child: child)
+                            } else {
+                                PrenatalReviewCard(child: child)
+                            }
                         }
                         PregnancyReviewRecordsCard(
                             fetalMovements: childFetalMovements,
@@ -581,7 +585,36 @@ struct PregnancyReviewHintCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel(icon: "heart.text.square.fill", title: "孕期回顾", iconColor: child?.careStage.color ?? Color(hex: "EC4899"))
-            Text("孕期阶段优先查看体温波动和用药记录。宝宝出生后，将日期改为出生日期或预产期到达后，回顾页会自动切换到婴儿成长、喂养、尿布和睡眠分析。")
+            Text(child?.hasDelivered == true ? "生产日期已经保存，这段孕期记录会作为独立回忆保留。愿之后的每一天都慢慢恢复、慢慢相爱。" : "孕期阶段优先查看体温波动、用药记录和产检项目。生产后可以在今日页保存生产日期，孕期档案会变成纪念回顾。")
+                .font(.nuraCaption())
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .nuraCard()
+    }
+}
+
+struct DeliveryReviewCard: View {
+    var child: Child
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(icon: "sparkles", title: "生产纪念", iconColor: child.careStage.color)
+            HStack(spacing: 8) {
+                ReportMetricTile(
+                    title: "生产日期",
+                    value: child.deliveryDate?.nuraDateShortDisplay ?? "--",
+                    icon: "calendar",
+                    color: child.careStage.color
+                )
+                ReportMetricTile(
+                    title: "孕期记录",
+                    value: "已归档",
+                    icon: "archivebox.fill",
+                    color: .nuraBlue
+                )
+            }
+            Text("辛苦啦。这里会继续保存孕期里的胎动、血压、血糖、体重、体温和用药记录。")
                 .font(.nuraCaption())
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -134,14 +134,16 @@ struct TodayView: View {
                     case .pregnancy:
                         if let child = selectedChild {
                             PregnancyTodayCard(child: child, onDelivered: { showBirthBabySheet = true })
-                            PregnancySizeCard(child: child)
-                            PregnancyVitalsCard(
-                                fetalMovement: recentFetalMovements.first,
-                                bloodPressure: recentBloodPressures.first,
-                                bloodSugar: recentBloodSugars.first,
-                                weight: recentPregnancyWeights.first
-                            )
-                            PrenatalCheckupCard(child: child)
+                            if !child.hasDelivered {
+                                PregnancySizeCard(child: child)
+                                PregnancyVitalsCard(
+                                    fetalMovement: recentFetalMovements.first,
+                                    bloodPressure: recentBloodPressures.first,
+                                    bloodSugar: recentBloodSugars.first,
+                                    weight: recentPregnancyWeights.first
+                                )
+                                PrenatalCheckupCard(child: child)
+                            }
                             EmergencySOSCard(child: child)
                         }
                         TemperatureCard(records: todayTemperatures, onAddTap: { logType = .temperature })
@@ -220,7 +222,7 @@ struct TodayView: View {
         }
         .sheet(isPresented: $showBirthBabySheet) {
             if let pregnancy = selectedChild {
-                BirthBabySheet(pregnancy: pregnancy, selectedChildId: $selectedChildId)
+                DeliveryDateSheet(pregnancy: pregnancy)
             }
         }
     }
@@ -242,27 +244,47 @@ struct PregnancyTodayCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionLabel(icon: "calendar.badge.clock", title: "孕期概览", iconColor: child.careStage.color)
-            HStack(spacing: 8) {
-                StatBox(
-                    label: "当前孕周",
-                    value: child.pregnancyWeekDisplay,
-                    unit: "",
-                    color: child.careStage.color,
-                    icon: "heart.circle.fill"
-                )
-                StatBox(
-                    label: "距预产期",
-                    value: "\(child.daysUntilDueDate)",
-                    unit: "天",
-                    color: .nuraBlue,
-                    icon: "calendar"
-                )
+
+            if let deliveryDate = child.deliveryDate {
+                HStack(spacing: 8) {
+                    StatBox(
+                        label: "生产日期",
+                        value: deliveryDate.nuraDateShortDisplay,
+                        unit: "",
+                        color: child.careStage.color,
+                        icon: "sparkles"
+                    )
+                    StatBox(
+                        label: "珍贵日子",
+                        value: "\(daysSince(deliveryDate))",
+                        unit: "天前",
+                        color: .nuraBlue,
+                        icon: "heart.fill"
+                    )
+                }
+            } else {
+                HStack(spacing: 8) {
+                    StatBox(
+                        label: "当前孕周",
+                        value: child.pregnancyWeekDisplay,
+                        unit: "",
+                        color: child.careStage.color,
+                        icon: "heart.circle.fill"
+                    )
+                    StatBox(
+                        label: "距预产期",
+                        value: "\(child.daysUntilDueDate)",
+                        unit: "天",
+                        color: .nuraBlue,
+                        icon: "calendar"
+                    )
+                }
             }
             VStack(alignment: .leading, spacing: 6) {
-                Label("今日重点", systemImage: "checklist")
+                Label(child.hasDelivered ? "恭喜你" : "今日重点", systemImage: child.hasDelivered ? "heart.fill" : "checklist")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
-                Text("记录体温、用药和产检相关变化；出生后系统会自动切换到婴儿界面。")
+                Text(child.hasDelivered ? "辛苦啦，新的旅程开始了。愿你和宝宝都被温柔照顾，也别忘了好好休息。" : "记录体温、用药和产检相关变化；生产后可以在这里保存生产日期。")
                     .font(.nuraCaption())
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -271,100 +293,68 @@ struct PregnancyTodayCard: View {
             .background(child.careStage.color.opacity(0.07))
             .cornerRadius(12)
 
-            Button(action: onDelivered) {
-                Label("生了宝宝", systemImage: "sparkles")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 46)
-                    .background(child.careStage.color)
-                    .cornerRadius(14)
+            if !child.hasDelivered {
+                Button(action: onDelivered) {
+                    Label("生了宝宝", systemImage: "sparkles")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .background(child.careStage.color)
+                        .cornerRadius(14)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .nuraCard()
     }
+
+    private func daysSince(_ date: Date) -> Int {
+        max(Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0, 0)
+    }
 }
 
-struct BirthBabySheet: View {
+struct DeliveryDateSheet: View {
     var pregnancy: Child
-    @Binding var selectedChildId: UUID?
 
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    @State private var name = ""
     @State private var birthDate = Date()
-    @State private var gender: Child.Gender = .female
-    @State private var color: Child.ChildColor = .pink
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Text("孕期档案会继续保留，系统会新建一个宝宝档案。宝宝信息可以先不填完整，之后可在档案列表中编辑。")
+                    Text("这里仅保存生产日期，不会自动创建宝宝档案。之后如需记录宝宝信息，可以在档案列表中手动添加宝宝。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
 
-                Section("宝宝信息") {
-                    TextField("宝宝名字（可选）", text: $name)
-                    DatePicker("出生日期", selection: $birthDate, in: Date.distantPast...Date(), displayedComponents: .date)
-                }
-
-                Section("性别") {
-                    Picker("性别", selection: $gender) {
-                        Text("女").tag(Child.Gender.female)
-                        Text("男").tag(Child.Gender.male)
-                    }
-                    .pickerStyle(.segmented)
-                }
-
-                Section("主题颜色") {
-                    HStack(spacing: 12) {
-                        ForEach(Child.ChildColor.allCases, id: \.self) { c in
-                            ZStack {
-                                Circle().fill(c.swatch).frame(width: 36, height: 36)
-                                if color == c {
-                                    Circle().strokeBorder(.white, lineWidth: 3).frame(width: 36, height: 36)
-                                    Circle().strokeBorder(c.swatch, lineWidth: 1.5).frame(width: 42, height: 42)
-                                }
-                            }
-                            .onTapGesture { withAnimation { color = c } }
-                        }
-                    }
-                    .padding(.vertical, 4)
+                Section("生产信息") {
+                    DatePicker("生产日期", selection: $birthDate, in: Date.distantPast...Date(), displayedComponents: .date)
                 }
             }
-            .navigationTitle("宝宝出生啦")
+            .navigationTitle("记录生产日期")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("取消") { dismiss() }.foregroundStyle(.secondary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("生成宝宝") { createBaby() }
+                    Button("保存") { saveDeliveryDate() }
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundStyle(.nuraPrimary)
                 }
             }
         }
         .tint(.nuraPrimary)
+        .onAppear {
+            birthDate = pregnancy.deliveryDate ?? Date()
+        }
     }
 
-    private func createBaby() {
-        let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        let baby = Child(
-            name: trimmedName.isEmpty ? "宝宝" : trimmedName,
-            birthDate: birthDate,
-            gender: gender,
-            color: color,
-            profileType: .baby,
-            emergencyContactName: pregnancy.emergencyContactName,
-            emergencyContactPhone: pregnancy.emergencyContactPhone
-        )
-        modelContext.insert(baby)
-        selectedChildId = baby.id
+    private func saveDeliveryDate() {
+        pregnancy.deliveryDate = birthDate
         dismiss()
     }
 }

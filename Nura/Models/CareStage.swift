@@ -171,6 +171,7 @@ extension Child {
     }
 
     var isPregnancy: Bool { careStage == .pregnancy }
+    var hasDelivered: Bool { profileType == .pregnancy && deliveryDate != nil }
     var isInfant: Bool { careStage == .infant }
     var isChildStage: Bool { careStage == .child }
 
@@ -183,10 +184,12 @@ extension Child {
     }
 
     var daysUntilDueDate: Int {
-        max(Calendar.current.dateComponents([.day], from: Date(), to: birthDate).day ?? 0, 0)
+        if hasDelivered { return 0 }
+        return max(Calendar.current.dateComponents([.day], from: Date(), to: birthDate).day ?? 0, 0)
     }
 
     var pregnancyWeekDisplay: String {
+        if hasDelivered { return "已生产" }
         let dueToNow = Calendar.current.dateComponents([.day], from: Date(), to: birthDate).day ?? 0
         let gestationalDays = max(0, min(280, 280 - dueToNow))
         let week = max(1, gestationalDays / 7)
@@ -195,6 +198,7 @@ extension Child {
     }
 
     var gestationalWeek: Int {
+        if hasDelivered { return 40 }
         let dueToNow = Calendar.current.dateComponents([.day], from: Date(), to: birthDate).day ?? 0
         let gestationalDays = max(0, min(280, 280 - dueToNow))
         return max(1, gestationalDays / 7)
