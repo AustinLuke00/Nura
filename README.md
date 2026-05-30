@@ -1,164 +1,260 @@
 # Nura
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Platform-iOS%2018.0%2B-blue.svg" alt="Platform: iOS 18.0+">
-  <img src="https://img.shields.io/badge/Swift-6.0-orange.svg" alt="Swift 6.0">
-  <img src="https://img.shields.io/badge/SwiftUI-Native-green.svg" alt="SwiftUI">
-  <img src="https://img.shields.io/badge/License-MIT-lightgrey.svg" alt="License: MIT">
+  <img src="Nura/Assets.xcassets/AppIcon.appiconset/logo.png" width="96" alt="Nura App Icon">
 </p>
 
-## 📱 关于 Nura
+<h3 align="center">从孕期到成长，一本温柔、清晰、可回顾的家庭健康手账。</h3>
 
-Nura 是一款现代化的育儿记录应用，专为新手父母设计。它帮助您轻松记录和追踪宝宝的日常活动、成长里程碑和健康数据，让育儿过程更加井然有序。
+<p align="center">
+  <img src="https://img.shields.io/badge/Swift-5.0-orange.svg" alt="Swift 5.0">
+  <img src="https://img.shields.io/badge/SwiftUI-Native-2F80ED.svg" alt="SwiftUI">
+  <img src="https://img.shields.io/badge/SwiftData-Local%20First-8B5CF6.svg" alt="SwiftData">
+  <img src="https://img.shields.io/badge/iOS-26.2%2B-111827.svg" alt="iOS 26.2+">
+  <img src="https://img.shields.io/badge/License-MIT-lightgrey.svg" alt="MIT License">
+</p>
 
-### ✨ 主要功能
+<p align="center">
+  <img src="Nura/Assets.xcassets/LaunchImage.launchimage/Nura_1242x2688.jpg" width="300" alt="Nura launch visual">
+</p>
 
-- **👶 多宝宝管理** - 支持同时管理多个孩子的记录
-- **🍼 喂养记录** - 记录母乳、配方奶和辅食喂养
-- **😴 睡眠追踪** - 追踪宝宝的睡眠时间和模式
-- **🧷 尿布记录** - 记录换尿布次数和类型
-- **📏 成长数据** - 记录体重、身高和头围等体征
-- **🎯 里程碑** - 记录宝宝的重要成长时刻
-- **📊 数据可视化** - 使用图表展示趋势和统计
-- **📱 成长报告** - 生成和分享精美的成长报告
-- **🎨 个性化主题** - 为每个宝宝选择专属颜色
+## 为什么是 Nura
 
-## 🏗️ 技术栈
+Nura 是一款面向准妈妈和家庭的 iOS 记录应用。它不是简单的「宝宝记事本」，而是会根据档案自动判断当前阶段，并把界面、记录项和回顾方式切换到最需要的位置。
 
-- **SwiftUI** - 现代化的声明式 UI 框架
-- **Swift Data** - 使用 @Model 宏的本地数据持久化
-- **Swift Charts** - 原生图表可视化
-- **Swift Concurrency** - async/await 异步编程
-- **ImageRenderer** - 报告图片生成
+- 孕期：关注孕周、胎动、血压、血糖、孕期体重、产检提醒和 SOS 联系人。
+- 婴儿：关注喂养、睡眠、尿布、黄疸、疫苗、体温和呼吸。
+- 儿童：关注成长曲线、睡眠、健康记录、用药和疫苗提醒。
+- 回顾：用图表、趋势和报告图，把零散记录变成直观总结。
 
-## 📂 项目结构
+## 产品亮点
 
-```
-Nura/
-├── App/                      # 应用主入口
-│   ├── NuraApp.swift        # App 生命周期
-│   └── ContentView.swift    # 主视图
-│
-├── Models/                   # 数据模型层
-│   ├── Child.swift          # 孩子模型
-│   ├── FeedingRecord.swift  # 喂养记录
-│   ├── SleepRecord.swift    # 睡眠记录
-│   ├── DiaperRecord.swift   # 尿布记录
-│   ├── GrowthRecord.swift   # 成长数据
-│   └── Milestone.swift      # 里程碑
-│
-├── Views/                    # 视图层
-│   ├── Home/                # 主页相关视图
-│   ├── Child/               # 孩子管理视图
-│   ├── Records/             # 各类记录视图
-│   ├── Statistics/          # 统计视图
-│   └── Reports/             # 报告生成视图
-│
-├── Components/              # 可复用组件
-│   └── ...
-│
-└── Utilities/               # 工具类
-    ├── Theme.swift          # 设计系统
-    └── Extensions/          # 扩展
-```
+| 场景 | Nura 做了什么 |
+| --- | --- |
+| 孕期记录 | 预产期自动计算孕周；展示胎儿大小、当周/下周产检项目；支持胎动计时、血压、血糖、体重记录 |
+| 已生产归档 | 点击「生了宝宝」只记录生产日期，不强制创建宝宝档案；孕期档案保留为生产纪念和历史回顾 |
+| 婴儿照护 | 喂养、睡眠、尿布、黄疸、体温、呼吸等高频记录快速录入 |
+| 儿童成长 | 生长记录、睡眠和健康趋势持续追踪 |
+| 疫苗提醒 | 内置基础疫苗计划，结合已接种记录判断下一针、即将到期和逾期 |
+| 用药历史 | 用药记录按天归档，方便复盘某一天吃了什么、吃了多少 |
+| 分享报告 | 回顾页可生成美观报告图，用 `ImageRenderer` 输出分享 |
 
-## 🎨 设计系统
+## 功能预览
 
-### 配色方案
+### 分阶段首页
 
-- **主色调**: 柔和紫色 (#A78BFA)
-- **活动颜色**:
-  - 喂养: 绿色 (#10B981)
-  - 睡眠: 紫色 (#8B5CF6)
-  - 尿布: 琥珀色 (#F59E0B)
-- **孩子主题**: 紫色、粉色、蓝色、青色、琥珀色
+Nura 会读取档案类型和年龄，自动切换不同的首页内容。
 
-### 组件
-
-- `StatBox` - 统计数据卡片
-- `NuraBadge` - 标签徽章
-- `SectionLabel` - 区块标题
-- `EmptyStateRow` - 空状态提示
-
-## 🚀 开始使用
-
-### 环境要求
-
-- Xcode 16.0+
-- iOS 18.0+
-- macOS Sequoia 15.0+ (for development)
-
-### 安装步骤
-
-1. 克隆仓库
-```bash
-git clone https://github.com/yourusername/nura.git
-cd nura
-```
-
-2. 打开项目
-```bash
-open Nura.xcodeproj
-```
-
-3. 选择目标设备或模拟器，点击运行
-
-## 📊 数据模型
-
-### Child (孩子)
 ```swift
-@Model
-class Child {
-    var name: String
-    var birthDate: Date
-    var gender: Gender
-    var color: ChildColor
-    // 关联记录...
+extension Child {
+    var careStage: CareStage {
+        if profileType == .pregnancy { return .pregnancy }
+        return ageInDays < 365 ? .infant : .child
+    }
+
+    var hasDelivered: Bool {
+        profileType == .pregnancy && deliveryDate != nil
+    }
 }
 ```
 
-### 记录类型
-- **FeedingRecord** - 喂养类型、数量、时间
-- **SleepRecord** - 开始/结束时间、睡眠质量
-- **DiaperRecord** - 尿布类型、更换时间
-- **GrowthRecord** - 体重、身高、头围
-- **Milestone** - 标题、描述、日期、emoji
+### 孕期专项记录
 
-## 🎯 路线图
+孕期不是只看倒计时。Nura 把常用记录拆成独立 SwiftData 模型，后续可以单独做趋势、回顾和报告。
 
-- [ ] iCloud 同步
-- [ ] Widget 桌面小组件
-- [ ] Apple Watch 支持
-- [ ] 数据导出功能
-- [ ] 提醒和通知
-- [ ] 多语言支持
-- [ ] 暗色模式优化
-- [ ] iPad 适配
+```swift
+@Model
+final class FetalMovementRecord {
+    @Attribute(.unique) var id: UUID
+    var timestamp: Date
+    var count: Int
+    var durationMinutes: Int
+    var actualSeconds: Int
+    var child: Child?
+}
 
-## 🤝 贡献
+@Model
+final class BloodPressureRecord {
+    @Attribute(.unique) var id: UUID
+    var timestamp: Date
+    var systolic: Int
+    var diastolic: Int
+    var child: Child?
+}
+```
 
-欢迎提交 Issue 和 Pull Request！
+### 可配置的阶段功能
 
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
+每个阶段拥有自己的快速记录入口，避免把所有功能堆在一个页面里。
 
-## 📄 开源协议
+```swift
+enum CareStage {
+    case pregnancy
+    case infant
+    case child
 
-本项目采用 MIT 协议 - 查看 [LICENSE](LICENSE) 文件了解详情
+    var logTypes: [NuraLogType] {
+        switch self {
+        case .pregnancy:
+            return [.fetalMovement, .bloodPressure, .bloodSugar, .pregnancyWeight, .temperature, .medicine]
+        case .infant:
+            return [.feeding, .diaper, .sleep, .jaundice, .growth, .vaccine, .medicine, .temperature, .breathing]
+        case .child:
+            return [.growth, .sleep, .vaccine, .medicine, .temperature, .breathing]
+        }
+    }
+}
+```
 
-## 👨‍💻 作者
+### 疫苗提醒逻辑
 
-由充满爱心的开发者为新手父母打造 ❤️
+疫苗计划使用静态排期表，实际接种数据使用 SwiftData 持久化。提醒状态由计划日期和接种记录共同决定。
 
-## 🙏 致谢
+```swift
+struct VaccineReminderItem: Identifiable {
+    let schedule: VaccineScheduleItem
+    let record: VaccineRecord?
+    let dueDate: Date
 
-- SwiftUI 和 Swift Data 框架
-- SF Symbols 图标系统
-- 所有使用和反馈的用户
+    var status: VaccineRecord.Status {
+        if record?.isCompleted == true { return .done }
+        if daysUntilDue < 0 { return .overdue }
+        if daysUntilDue <= 14 { return .soon }
+        return .upcoming
+    }
+}
+```
+
+### 报告图生成
+
+回顾页会把 SwiftUI 视图渲染为图片，再交给系统分享面板。
+
+```swift
+@MainActor
+private func generateReportImage() {
+    let report = NuraReportSnapshotView(...)
+        .frame(width: 390)
+
+    let renderer = ImageRenderer(content: report)
+    renderer.scale = 3
+    shareImage = renderer.uiImage
+    showShareSheet = shareImage != nil
+}
+```
+
+## 技术栈
+
+- SwiftUI：声明式界面、状态驱动交互、原生动画。
+- SwiftData：本地优先的数据持久化，使用 `@Model` 和关系级联删除。
+- Swift Charts：喂养、睡眠、尿布、体温、呼吸等趋势图表。
+- UIKit Bridge：通过 `UIActivityViewController` 调起系统分享。
+- SF Symbols：统一的图标语言，减少额外图片依赖。
+
+## 项目结构
+
+```text
+Nura/
+├── App/
+│   ├── NuraApp.swift                 # App 入口、SwiftData modelContainer、欢迎流程
+│   └── GrowthReportView.swift        # 成长报告相关视图
+├── Models/
+│   ├── Child.swift                   # 档案模型：孕妇/宝宝、阶段判断、生产日期
+│   ├── CareStage.swift               # 孕期/婴儿/儿童功能配置
+│   ├── PregnancyRecords.swift        # 胎动、血压、血糖、孕期体重
+│   ├── VaccineRecord.swift           # 疫苗计划、记录和提醒状态
+│   ├── FeedingRecord.swift           # 喂养记录
+│   ├── DiaperRecord.swift            # 尿布记录
+│   ├── SleepRecord.swift             # 睡眠记录
+│   ├── GrowthRecord.swift            # 生长记录
+│   └── DataManager.swift             # 数据清理/重置工具
+├── Views/
+│   ├── TodayView.swift               # 今日页、快速记录、孕期/婴儿/儿童卡片
+│   ├── ReviewView.swift              # 回顾页、图表、报告分享、历史记录
+│   ├── ChildSwitcherView.swift       # 档案切换、新增、编辑、删除
+│   └── AnimatedLaunchScreenView.swift# 开屏动画
+├── Theme/
+│   └── Theme.swift                   # 颜色、字体、卡片样式、通用扩展
+└── Assets.xcassets/
+    ├── AppIcon.appiconset/
+    └── LaunchImage.launchimage/
+```
+
+## 数据模型概览
+
+```mermaid
+erDiagram
+    Child ||--o{ FeedingRecord : owns
+    Child ||--o{ DiaperRecord : owns
+    Child ||--o{ SleepRecord : owns
+    Child ||--o{ GrowthRecord : owns
+    Child ||--o{ MedicineRecord : owns
+    Child ||--o{ VaccineRecord : owns
+    Child ||--o{ FetalMovementRecord : owns
+    Child ||--o{ BloodPressureRecord : owns
+    Child ||--o{ BloodSugarRecord : owns
+    Child ||--o{ PregnancyWeightRecord : owns
+```
+
+## 设计语言
+
+Nura 的界面尽量保持「轻、柔、明确」：
+
+- 圆角卡片承载记录和趋势。
+- 粉色用于孕期，紫色用于婴儿核心记录，蓝色用于儿童成长。
+- 高风险健康状态使用红/橙色提醒，正常状态尽量克制。
+- 记录入口使用图标+短标题，减少页面阅读压力。
+
+## 运行项目
+
+### 环境要求
+
+- Xcode 17 或更新版本
+- iOS Simulator / iOS 设备目标：当前工程配置为 iOS 26.2+
+- macOS 开发环境
+
+### 本地运行
+
+```bash
+git clone https://github.com/AustinLuke00/Nura.git
+cd Nura
+open Nura.xcodeproj
+```
+
+在 Xcode 中选择 `Nura` scheme 和目标模拟器，然后运行。
+
+也可以用命令行构建：
+
+```bash
+xcodebuild \
+  -project Nura.xcodeproj \
+  -scheme Nura \
+  -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' \
+  build
+```
+
+## 路线图
+
+- [ ] 本地通知：疫苗、产检、用药提醒。
+- [ ] iCloud 同步：多设备共享家庭记录。
+- [ ] 小组件：今日重点和下一针提醒。
+- [ ] PDF/长图导出：更完整的阶段报告。
+- [ ] iPad 适配：更适合长期回顾和图表查看。
+- [ ] 数据备份：JSON/CSV 导出。
+
+## 贡献
+
+欢迎提交 Issue、Pull Request 或产品建议。适合贡献的方向：
+
+- 新的孕期/儿童健康指标。
+- 更细致的疫苗计划配置。
+- 趋势图和报告图样式优化。
+- 可访问性、暗色模式和 iPad 布局优化。
+
+## License
+
+Nura is available under the MIT license. See [LICENSE](LICENSE) for more info.
 
 ---
 
-**记录宝宝成长的每一刻** 🌟
+<p align="center"><strong>Nura</strong> · 记录不是负担，而是把重要的日子稳稳接住。</p>
