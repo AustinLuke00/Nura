@@ -35,6 +35,7 @@ struct GrowthReportView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showShareSheet = false
     @State private var reportImage: UIImage?
+    @State private var isGeneratingShareImage = false
     
     var body: some View {
         NavigationStack {
@@ -60,12 +61,18 @@ struct GrowthReportView: View {
                         generateAndShare()
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "square.and.arrow.up")
-                            Text("分享")
+                            if isGeneratingShareImage {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "square.and.arrow.up")
+                                Text("分享")
+                            }
                         }
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundStyle(.nuraPrimary)
                     }
+                    .disabled(isGeneratingShareImage)
                 }
             }
             .sheet(isPresented: $showShareSheet) {
@@ -78,14 +85,30 @@ struct GrowthReportView: View {
     
     // MARK: - Generate and Share
     
+    @MainActor
     private func generateAndShare() {
-        // 生成报告图片
-        let renderer = ImageRenderer(content: ReportContentView(child: child, reportData: reportData))
-        renderer.scale = 3.0 // 高清图片
-        
-        if let image = renderer.uiImage {
-            reportImage = image
+        guard !isGeneratingShareImage else { return }
+        if reportImage != nil {
             showShareSheet = true
+            return
+        }
+
+        isGeneratingShareImage = true
+        let report = ReportContentView(child: child, reportData: reportData)
+            .frame(width: 390)
+            .background(Color.white)
+
+        Task { @MainActor in
+            await Task.yield()
+            let renderer = ImageRenderer(content: report)
+            renderer.proposedSize = ProposedViewSize(width: 390, height: nil)
+            renderer.scale = 2
+            
+            if let image = renderer.uiImage {
+                reportImage = image
+                showShareSheet = true
+            }
+            isGeneratingShareImage = false
         }
     }
 }

@@ -28,6 +28,7 @@ struct ReviewView: View {
     @State private var timeFilter: TimeFilter = .week
     @State private var shareImage: UIImage?
     @State private var showShareSheet = false
+    @State private var isGeneratingShareImage = false
 
     enum TimeFilter: String, CaseIterable {
         case week = "7天"
@@ -220,10 +221,16 @@ struct ReviewView: View {
                     Button {
                         generateReportImage()
                     } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.nuraPrimary)
+                        if isGeneratingShareImage {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.nuraPrimary)
+                        }
                     }
+                    .disabled(isGeneratingShareImage)
                 }
             }
         }
@@ -232,11 +239,23 @@ struct ReviewView: View {
                 ActivityShareSheet(items: [shareImage])
             }
         }
+        .onChange(of: selectedChildId) {
+            shareImage = nil
+        }
+        .onChange(of: timeFilter) {
+            shareImage = nil
+        }
     }
 
     @MainActor
     private func generateReportImage() {
-        guard let selectedChild else { return }
+        guard !isGeneratingShareImage, let selectedChild else { return }
+        if shareImage != nil {
+            showShareSheet = true
+            return
+        }
+
+        isGeneratingShareImage = true
         let report = NuraReportSnapshotView(
             child: selectedChild,
             stage: selectedStage,
@@ -251,10 +270,15 @@ struct ReviewView: View {
         )
         .frame(width: 390)
 
-        let renderer = ImageRenderer(content: report)
-        renderer.scale = 3
-        shareImage = renderer.uiImage
-        showShareSheet = shareImage != nil
+        Task { @MainActor in
+            await Task.yield()
+            let renderer = ImageRenderer(content: report)
+            renderer.proposedSize = ProposedViewSize(width: 390, height: nil)
+            renderer.scale = 2
+            shareImage = renderer.uiImage
+            isGeneratingShareImage = false
+            showShareSheet = shareImage != nil
+        }
     }
 }
 
