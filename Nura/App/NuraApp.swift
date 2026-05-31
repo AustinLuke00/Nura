@@ -4,6 +4,7 @@
 
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 @main
 struct NuraApp: App {
@@ -135,6 +136,10 @@ struct WelcomeSheet: View {
     @State private var profileType: Child.ProfileType = .baby
     @State private var emergencyContactName = ""
     @State private var emergencyContactPhone = ""
+    @State private var showImporter = false
+    @State private var importResultTitle = ""
+    @State private var importResultMessage = ""
+    @State private var showImportResult = false
 
     private var latestSelectableDate: Date {
         Calendar.current.date(byAdding: .month, value: 10, to: Date()) ?? Date()
@@ -163,7 +168,7 @@ struct WelcomeSheet: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if currentStep == .addChild && !children.isEmpty {
+                if currentStep == .addChild {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("返回") {
                             withAnimation {
@@ -173,6 +178,14 @@ struct WelcomeSheet: View {
                         .foregroundStyle(.secondary)
                     }
                 }
+            }
+            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
+                importData(from: result)
+            }
+            .alert(importResultTitle, isPresented: $showImportResult) {
+                Button("好") { }
+            } message: {
+                Text(importResultMessage)
             }
         }
     }
@@ -243,19 +256,31 @@ struct WelcomeSheet: View {
             
             Spacer()
             
-            // 开始按钮
+            // 首次使用选项
             VStack(spacing: 12) {
                 Button {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                         currentStep = .addChild
                     }
                 } label: {
-                    Text("开始使用")
+                    Label("自行填写", systemImage: "square.and.pencil")
                         .font(.system(size: 17, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(Color.nuraPrimary)
+                        .cornerRadius(16)
+                }
+
+                Button {
+                    showImporter = true
+                } label: {
+                    Label("导入数据", systemImage: "square.and.arrow.down")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.nuraPrimary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(Color.nuraPrimary.opacity(0.12))
                         .cornerRadius(16)
                 }
                 
@@ -435,6 +460,33 @@ struct WelcomeSheet: View {
     }
     
     // MARK: - Actions
+
+    func importData(from result: Result<URL, Error>) {
+        do {
+            let url = try result.get()
+            let didStartAccessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccessing {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let data = try Data(contentsOf: url)
+            let summary = try DataManager.importData(data, into: modelContext)
+
+            if summary.insertedChildren > 0 || summary.mergedChildren > 0 {
+                dismiss()
+            } else {
+                importResultTitle = "导入完成"
+                importResultMessage = summary.message
+                showImportResult = true
+            }
+        } catch {
+            importResultTitle = "导入失败"
+            importResultMessage = error.localizedDescription
+            showImportResult = true
+        }
+    }
     
     func saveChild() {
         let trimmed = name.trimmingCharacters(in: .whitespaces)

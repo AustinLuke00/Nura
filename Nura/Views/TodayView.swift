@@ -36,6 +36,26 @@ struct TodayView: View {
         selectedChild?.careStage ?? .infant
     }
 
+    private var sheetLogType: Binding<NuraLogType?> {
+        Binding(
+            get: {
+                guard let logType, !logType.prefersFullScreenPresentation else { return nil }
+                return logType
+            },
+            set: { logType = $0 }
+        )
+    }
+
+    private var fullScreenLogType: Binding<NuraLogType?> {
+        Binding(
+            get: {
+                guard let logType, logType.prefersFullScreenPresentation else { return nil }
+                return logType
+            },
+            set: { logType = $0 }
+        )
+    }
+
     private var todayStart: Date { Calendar.current.startOfDay(for: Date()) }
 
     var todayFeedings: [FeedingRecord] {
@@ -217,7 +237,10 @@ struct TodayView: View {
                 }
             }
         }
-        .sheet(item: $logType) { type in
+        .sheet(item: sheetLogType) { type in
+            QuickLogSheet(logType: type, selectedChild: selectedChild)
+        }
+        .fullScreenCover(item: fullScreenLogType) { type in
             QuickLogSheet(logType: type, selectedChild: selectedChild)
         }
         .sheet(isPresented: $showBirthBabySheet) {
@@ -1495,6 +1518,12 @@ struct QuickLogButton: View {
 }
 
 // MARK: - QuickLogSheet
+
+extension NuraLogType {
+    var prefersFullScreenPresentation: Bool {
+        self == .breathing || self == .fetalMovement
+    }
+}
 
 struct QuickLogSheet: View {
     var logType: NuraLogType

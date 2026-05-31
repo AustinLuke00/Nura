@@ -3,6 +3,25 @@
 
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
+
+struct NuraBackupDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+
+    var data: Data
+
+    init(data: Data = Data()) {
+        self.data = data
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
 
 struct DeveloperSettingsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -12,6 +31,13 @@ struct DeveloperSettingsView: View {
     @State private var showClearAlert = false
     @State private var isClearing = false
     @State private var showSuccessMessage = false
+    @State private var isImportingOrExporting = false
+    @State private var showImporter = false
+    @State private var showExporter = false
+    @State private var exportDocument = NuraBackupDocument()
+    @State private var operationResultTitle = ""
+    @State private var operationResultMessage = ""
+    @State private var showOperationResult = false
     
     var body: some View {
         NavigationStack {
@@ -60,6 +86,32 @@ struct DeveloperSettingsView: View {
                 } header: {
                     Text("数据统计")
                 }
+
+                Section {
+                    Button {
+                        exportData()
+                    } label: {
+                        HStack {
+                            Image(systemName: "square.and.arrow.up")
+                            Text("导出数据")
+                        }
+                    }
+                    .disabled(isImportingOrExporting || children.isEmpty)
+
+                    Button {
+                        showImporter = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "square.and.arrow.down")
+                            Text("导入数据")
+                        }
+                    }
+                    .disabled(isImportingOrExporting)
+                } header: {
+                    Text("数据导入导出")
+                } footer: {
+                    Text("导入时会按 UUID 合并数据:已有宝宝会追加缺失记录,不存在的宝宝和记录会新增。")
+                }
                 
                 Section {
                     Button(role: .destructive) {
@@ -93,6 +145,28 @@ struct DeveloperSettingsView: View {
                 }
             } message: {
                 Text("此操作将删除所有宝宝信息和记录,且无法恢复。")
+            }
+            .alert(operationResultTitle, isPresented: $showOperationResult) {
+                Button("好") { }
+            } message: {
+                Text(operationResultMessage)
+            }
+            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
+                importData(from: result)
+            }
+            .fileExporter(
+                isPresented: $showExporter,
+                document: exportDocument,
+                contentType: .json,
+                defaultFilename: exportFilename
+            ) { result in
+                isImportingOrExporting = false
+                switch result {
+                case .success:
+                    showResult(title: "导出完成", message: "数据备份已导出为 JSON 文件。")
+                case .failure(let error):
+                    showResult(title: "导出失败", message: error.localizedDescription)
+                }
             }
             .overlay {
                 if showSuccessMessage {
@@ -129,8 +203,54 @@ struct DeveloperSettingsView: View {
     private var totalDiaperRecords: Int {
         children.reduce(0) { $0 + $1.diapers.count }
     }
+
+    private var exportFilename: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return "Nura-Backup-\(formatter.string(from: Date()))"
+    }
     
     // MARK: - Actions
+
+    private func exportData() {
+        isImportingOrExporting = true
+
+        do {
+            exportDocument = NuraBackupDocument(data: try DataManager.exportData(from: modelContext))
+            showExporter = true
+        } catch {
+            isImportingOrExporting = false
+            showResult(title: "导出失败", message: error.localizedDescription)
+        }
+    }
+
+    private func importData(from result: Result<URL, Error>) {
+        isImportingOrExporting = true
+
+        do {
+            let url = try result.get()
+            let didStartAccessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccessing {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let data = try Data(contentsOf: url)
+            let summary = try DataManager.importData(data, into: modelContext)
+            showResult(title: "导入完成", message: summary.message)
+        } catch {
+            showResult(title: "导入失败", message: error.localizedDescription)
+        }
+
+        isImportingOrExporting = false
+    }
+
+    private func showResult(title: String, message: String) {
+        operationResultTitle = title
+        operationResultMessage = message
+        showOperationResult = true
+    }
     
     private func clearAllData() {
         isClearing = true

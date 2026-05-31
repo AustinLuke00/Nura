@@ -3,6 +3,7 @@
 
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 // MARK: - ChildSwitcherView
 
@@ -49,7 +50,7 @@ struct ChildSwitcherView: View {
             .cornerRadius(20)
         }
         .buttonStyle(.plain)
-        .sheet(isPresented: $showChildPicker) {
+        .fullScreenCover(isPresented: $showChildPicker) {
             ChildPickerSheet(selectedChildId: $selectedChildId, showAddChild: $showAddChild)
         }
         .sheet(isPresented: $showAddChild) {
@@ -69,6 +70,12 @@ struct ChildPickerSheet: View {
     @State private var childToDelete: Child?
     @State private var showDeleteConfirmation = false
     @State private var childToEdit: Child?
+    @State private var showImporter = false
+    @State private var showExporter = false
+    @State private var exportDocument = NuraBackupDocument()
+    @State private var operationResultTitle = ""
+    @State private var operationResultMessage = ""
+    @State private var showOperationResult = false
 
     var body: some View {
         NavigationStack {
@@ -136,6 +143,41 @@ struct ChildPickerSheet: View {
                         .padding(.vertical, 6)
                     }
                 }
+
+                Section {
+                    Button {
+                        showImporter = true
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.system(size: 22))
+                                .foregroundStyle(.nuraPrimary)
+                            Text("导入数据")
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.nuraPrimary)
+                        }
+                        .padding(.vertical, 6)
+                    }
+
+                    Button {
+                        exportData()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 22))
+                                .foregroundStyle(.nuraPrimary)
+                            Text("导出数据")
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.nuraPrimary)
+                        }
+                        .padding(.vertical, 6)
+                    }
+                    .disabled(children.isEmpty)
+                } header: {
+                    Text("数据管理")
+                } footer: {
+                    Text("导入会合并已有宝宝并追加缺失记录,不会重复导入同 UUID 的记录。")
+                }
             }
             .navigationTitle("选择宝宝")
             .navigationBarTitleDisplayMode(.inline)
@@ -147,10 +189,29 @@ struct ChildPickerSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
-        .presentationDragIndicator(.visible)
         .sheet(item: $childToEdit) { child in
             EditChildSheet(child: child)
+        }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
+            importData(from: result)
+        }
+        .fileExporter(
+            isPresented: $showExporter,
+            document: exportDocument,
+            contentType: .json,
+            defaultFilename: exportFilename
+        ) { result in
+            switch result {
+            case .success:
+                showResult(title: "导出完成", message: "数据备份已导出为 JSON 文件。")
+            case .failure(let error):
+                showResult(title: "导出失败", message: error.localizedDescription)
+            }
+        }
+        .alert(operationResultTitle, isPresented: $showOperationResult) {
+            Button("好") { }
+        } message: {
+            Text(operationResultMessage)
         }
         .alert("确认删除", isPresented: $showDeleteConfirmation, presenting: childToDelete) { child in
             Button("取消", role: .cancel) { }
@@ -160,6 +221,48 @@ struct ChildPickerSheet: View {
         } message: { child in
             Text("确定要删除 \(child.name) 的所有信息吗？包括所有喂养、睡眠、尿布等记录都会被永久删除。")
         }
+    }
+
+    private var exportFilename: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return "Nura-Backup-\(formatter.string(from: Date()))"
+    }
+
+    private func exportData() {
+        do {
+            exportDocument = NuraBackupDocument(data: try DataManager.exportData(from: modelContext))
+            showExporter = true
+        } catch {
+            showResult(title: "导出失败", message: error.localizedDescription)
+        }
+    }
+
+    private func importData(from result: Result<URL, Error>) {
+        do {
+            let url = try result.get()
+            let didStartAccessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccessing {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let data = try Data(contentsOf: url)
+            let summary = try DataManager.importData(data, into: modelContext)
+            if selectedChildId == nil {
+                selectedChildId = try modelContext.fetch(FetchDescriptor<Child>()).first?.id
+            }
+            showResult(title: "导入完成", message: summary.message)
+        } catch {
+            showResult(title: "导入失败", message: error.localizedDescription)
+        }
+    }
+
+    private func showResult(title: String, message: String) {
+        operationResultTitle = title
+        operationResultMessage = message
+        showOperationResult = true
     }
     
     private func deleteChild(_ child: Child) {
