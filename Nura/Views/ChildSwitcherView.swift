@@ -136,7 +136,7 @@ struct ChildPickerSheet: View {
                             Image(systemName: "plus.circle.fill")
                                 .font(.system(size: 28))
                                 .foregroundStyle(.nuraPrimary)
-                            Text("添加新宝宝")
+                            Text("添加新信息")
                                 .font(.system(size: 16, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.nuraPrimary)
                         }
@@ -305,8 +305,8 @@ struct EditChildSheet: View {
 
     init(child: Child) {
         self.child = child
-        _name = State(initialValue: child.profileType == .pregnancy ? "" : child.name)
-        _birthDate = State(initialValue: child.birthDate)
+        _name = State(initialValue: child.profileType == .baby ? child.name : "")
+        _birthDate = State(initialValue: child.profileType == .pregnancy ? (child.lastMenstrualPeriodDate ?? Calendar.current.date(byAdding: .day, value: -280, to: child.birthDate) ?? child.birthDate) : (child.lastMenstrualPeriodDate ?? child.birthDate))
         _gender = State(initialValue: child.gender)
         _color = State(initialValue: child.color)
         _emergencyContactName = State(initialValue: child.emergencyContactName ?? "")
@@ -327,8 +327,8 @@ struct EditChildSheet: View {
         NavigationStack {
             Form {
                 Section("档案类型") {
-                    Label(child.profileType == .pregnancy ? "孕妇信息" : "宝宝信息",
-                          systemImage: child.profileType == .pregnancy ? "heart.circle.fill" : "figure.child")
+                    Label(child.profileType == .tryingToConceive ? "备孕信息" : (child.profileType == .pregnancy ? "孕妇信息" : "宝宝信息"),
+                          systemImage: child.profileType == .tryingToConceive ? "calendar.badge.heart" : (child.profileType == .pregnancy ? "heart.circle.fill" : "figure.child"))
                 }
 
                 Section("基本信息") {
@@ -336,11 +336,16 @@ struct EditChildSheet: View {
                         TextField("宝宝名字", text: $name)
                     }
                     DatePicker(
-                        child.profileType == .pregnancy ? "预产期" : "出生日期",
+                        child.profileType == .baby ? "出生日期" : "末次月经",
                         selection: $birthDate,
-                        in: child.profileType == .pregnancy ? Date.distantPast...latestSelectableDate : Date.distantPast...Date(),
+                        in: Date.distantPast...Date(),
                         displayedComponents: .date
                     )
+                    if child.profileType == .pregnancy {
+                        Text("预计预产期：\(estimatedDueDate(from: birthDate).nuraDateShortDisplay)")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 if child.profileType == .pregnancy {
@@ -357,7 +362,7 @@ struct EditChildSheet: View {
                         TextField("联系电话", text: $emergencyContactPhone)
                             .keyboardType(.phonePad)
                     }
-                } else {
+                } else if child.profileType == .baby {
                     Section("性别") {
                         Picker("性别", selection: $gender) {
                             Text("女").tag(Child.Gender.female)
@@ -383,7 +388,7 @@ struct EditChildSheet: View {
                     }
                 }
             }
-            .navigationTitle(child.profileType == .pregnancy ? "编辑孕妇信息" : "编辑宝宝信息")
+            .navigationTitle(child.profileType == .tryingToConceive ? "编辑备孕信息" : (child.profileType == .pregnancy ? "编辑孕妇信息" : "编辑宝宝信息"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -406,13 +411,18 @@ struct EditChildSheet: View {
             child.gender = gender
             child.color = color
         }
-        child.birthDate = birthDate
+        child.birthDate = child.profileType == .pregnancy ? estimatedDueDate(from: birthDate) : birthDate
+        child.lastMenstrualPeriodDate = child.profileType == .baby ? nil : birthDate
         if child.profileType == .pregnancy {
             child.deliveryDate = hasDeliveryDate ? deliveryDate : nil
         }
         child.emergencyContactName = emergencyContactName.trimmingCharacters(in: .whitespaces).nilIfEmpty
         child.emergencyContactPhone = emergencyContactPhone.trimmingCharacters(in: .whitespaces).nilIfEmpty
         dismiss()
+    }
+
+    private func estimatedDueDate(from lastMenstrualPeriod: Date) -> Date {
+        Calendar.current.date(byAdding: .day, value: 280, to: lastMenstrualPeriod) ?? lastMenstrualPeriod
     }
 }
 
@@ -543,6 +553,7 @@ struct AddChildSheet: View {
             Form {
                 Section {
                     Picker("信息类型", selection: $profileType) {
+                        Label("备孕信息", systemImage: "calendar.badge.heart").tag(Child.ProfileType.tryingToConceive)
                         Label("宝宝信息", systemImage: "figure.child").tag(Child.ProfileType.baby)
                         Label("孕妇信息", systemImage: "heart.circle.fill").tag(Child.ProfileType.pregnancy)
                     }
@@ -554,12 +565,12 @@ struct AddChildSheet: View {
                         TextField("宝宝名字", text: $name)
                     }
                     DatePicker(
-                        profileType == .pregnancy ? "预产期" : "出生日期",
+                        profileType == .baby ? "出生日期" : "末次月经",
                         selection: $birthDate,
-                        in: profileType == .pregnancy ? Date()...latestSelectableDate : Date.distantPast...Date(),
+                        in: Date.distantPast...Date(),
                         displayedComponents: .date
                     )
-                    Text(profileType == .pregnancy ? "孕妇信息只需要填写预产期。" : "宝宝信息会根据年龄自动切换婴儿或儿童界面。")
+                    Text(profileType == .tryingToConceive ? "备孕期会显示周期图、排卵窗口，并重点登记同房信息。" : (profileType == .pregnancy ? "预计预产期：\(estimatedDueDate(from: birthDate).nuraDateShortDisplay)。孕期档案默认女性。" : "宝宝信息会根据年龄自动切换婴儿或儿童界面。"))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -570,7 +581,7 @@ struct AddChildSheet: View {
                         TextField("联系电话", text: $emergencyContactPhone)
                             .keyboardType(.phonePad)
                     }
-                } else {
+                } else if profileType == .baby {
                     Section("性别") {
                         Picker("性别", selection: $gender) {
                             Text("女").tag(Child.Gender.female)
@@ -600,7 +611,7 @@ struct AddChildSheet: View {
                     }
                 }
             }
-            .navigationTitle(profileType == .pregnancy ? "添加孕妇信息" : "添加宝宝")
+            .navigationTitle(profileType == .tryingToConceive ? "添加备孕信息" : (profileType == .pregnancy ? "添加孕妇信息" : "添加宝宝"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -616,9 +627,7 @@ struct AddChildSheet: View {
         }
         .tint(.nuraPrimary)
         .onChange(of: profileType) { _, newValue in
-            if newValue == .pregnancy && birthDate < Date() {
-                birthDate = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
-            } else if newValue == .baby && birthDate > Date() {
+            if newValue == .baby && birthDate > Date() {
                 birthDate = Date()
             }
         }
@@ -626,18 +635,23 @@ struct AddChildSheet: View {
 
     func addChild() {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard profileType == .pregnancy || !trimmed.isEmpty else { return }
+        guard profileType != .baby || !trimmed.isEmpty else { return }
         let child = Child(
-            name: profileType == .pregnancy ? "孕期档案" : trimmed,
-            birthDate: birthDate,
-            gender: gender,
-            color: profileType == .pregnancy ? .pink : color,
+            name: profileType == .tryingToConceive ? "备孕档案" : (profileType == .pregnancy ? "孕期档案" : trimmed),
+            birthDate: profileType == .pregnancy ? estimatedDueDate(from: birthDate) : birthDate,
+            gender: profileType == .baby ? gender : .female,
+            color: profileType == .tryingToConceive ? .amber : (profileType == .pregnancy ? .pink : color),
             profileType: profileType,
             emergencyContactName: emergencyContactName.trimmingCharacters(in: .whitespaces).nilIfEmpty,
-            emergencyContactPhone: emergencyContactPhone.trimmingCharacters(in: .whitespaces).nilIfEmpty
+            emergencyContactPhone: emergencyContactPhone.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+            lastMenstrualPeriodDate: profileType == .baby ? nil : birthDate
         )
         modelContext.insert(child)
         dismiss()
+    }
+
+    private func estimatedDueDate(from lastMenstrualPeriod: Date) -> Date {
+        Calendar.current.date(byAdding: .day, value: 280, to: lastMenstrualPeriod) ?? lastMenstrualPeriod
     }
 }
 

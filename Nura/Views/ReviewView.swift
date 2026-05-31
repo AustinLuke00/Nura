@@ -19,6 +19,7 @@ struct ReviewView: View {
     @Query private var allMedicines: [MedicineRecord]
     @Query private var allTemperatures: [TemperatureRecord]
     @Query private var allBreathing: [BreathingRecord]
+    @Query private var allConceptionRecords: [ConceptionRecord]
     @Query private var allFetalMovements: [FetalMovementRecord]
     @Query private var allBloodPressures: [BloodPressureRecord]
     @Query private var allBloodSugars: [BloodSugarRecord]
@@ -107,6 +108,12 @@ struct ReviewView: View {
         childBreathing.filter { $0.timestamp >= cutoffDate }
     }
 
+    var childConceptionRecords: [ConceptionRecord] {
+        guard let child = selectedChild else { return [] }
+        return allConceptionRecords.filter { $0.child?.id == child.id }
+            .sorted { $0.timestamp < $1.timestamp }
+    }
+
     var childFetalMovements: [FetalMovementRecord] {
         guard let child = selectedChild else { return [] }
         return allFetalMovements.filter { $0.child?.id == child.id }
@@ -150,6 +157,12 @@ struct ReviewView: View {
                         .padding(.top, 8)
 
                     switch selectedStage {
+                    case .tryingToConceive:
+                        if let child = selectedChild {
+                            ConceptionReviewCard(child: child, records: childConceptionRecords)
+                        }
+                        TemperatureTrendCard(records: filteredTemperatures, historyRecords: childTemperatures)
+                        MedicineCard(medicines: childMedicines)
                     case .pregnancy:
                         PregnancyReviewHintCard(child: selectedChild)
                         if let child = selectedChild {
@@ -487,6 +500,202 @@ struct ReportMetricTile: View {
 }
 
 // MARK: - Pregnancy Review Records
+
+struct ConceptionReviewCard: View {
+    var child: Child
+    var records: [ConceptionRecord]
+
+    private var periodRecords: [ConceptionRecord] {
+        records.filter { $0.periodFlow.isPeriod }
+    }
+
+    private var intercourseRecords: [ConceptionRecord] {
+        records.filter(\.hadIntercourse)
+    }
+
+    private var temperatureRecords: [ConceptionRecord] {
+        records.filter { $0.basalTemperature != nil }
+    }
+
+    private var positiveCount: Int {
+        records.filter { $0.ovulationTest == .positive || $0.ovulationTest == .peak }.count
+    }
+
+    private var latestPeriodTime: Date? {
+        periodRecords.last?.timestamp
+    }
+
+    private var intercourseCount: Int {
+        intercourseRecords.count
+    }
+
+    private var latestIntercourseTime: Date? {
+        intercourseRecords.last?.intercourseTime
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionLabel(icon: "calendar.badge.heart", title: "备孕回顾", iconColor: child.careStage.color)
+                Spacer()
+                if let archivedAt = child.conceptionArchivedAt {
+                    NuraBadge(text: "已归档 \(archivedAt.nuraDateShortDisplay)", color: .nuraSuccess)
+                } else {
+                    NuraBadge(text: "未怀孕", color: child.careStage.color)
+                }
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                OverviewTextBox(label: "月经来潮", value: latestPeriodTime?.nuraDateShortDisplay ?? "暂无记录", color: Color(hex: "F43F5E"), icon: "drop.fill")
+                OverviewTextBox(label: "同房信息", value: latestIntercourseTime?.nuraDateShortDisplay ?? "\(intercourseCount)次", color: Color(hex: "EC4899"), icon: "heart.fill")
+                OverviewTextBox(label: "阳性/强阳", value: "\(positiveCount)次", color: .nuraBlue, icon: "drop.degreesign.fill")
+                OverviewTextBox(label: "最近体温", value: temperatureRecords.last?.temperatureDisplay ?? "--", color: .nuraDanger, icon: "thermometer.medium")
+            }
+
+            ConceptionEventHistorySection(
+                title: "月经来潮历史",
+                icon: "drop.fill",
+                color: Color(hex: "F43F5E"),
+                records: periodRecords,
+                emptyText: "暂无月经来潮记录",
+                value: { $0.periodFlow.rawValue },
+                detail: { $0.notes ?? "已记录为周期图起点" }
+            )
+
+            ConceptionEventHistorySection(
+                title: "同房历史",
+                icon: "heart.fill",
+                color: Color(hex: "EC4899"),
+                records: intercourseRecords,
+                emptyText: "暂无同房记录",
+                value: { $0.intercourseTime?.nuraDateShortDisplay ?? $0.timestamp.nuraDateShortDisplay },
+                detail: { $0.notes ?? "已计入备孕窗口回顾" }
+            )
+
+            if temperatureRecords.count >= 2 {
+                Text("基础体温趋势")
+                    .font(.nuraCaption())
+                    .foregroundStyle(.secondary)
+                Chart(temperatureRecords) { record in
+                    LineMark(
+                        x: .value("日期", record.timestamp),
+                        y: .value("体温", record.basalTemperature ?? 0)
+                    )
+                    .foregroundStyle(child.careStage.color)
+                    .interpolationMethod(.catmullRom)
+
+                    PointMark(
+                        x: .value("日期", record.timestamp),
+                        y: .value("体温", record.basalTemperature ?? 0)
+                    )
+                    .foregroundStyle(child.careStage.color)
+                }
+                .frame(height: 180)
+                .chartYAxis {
+                    AxisMarks(position: .leading)
+                }
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 4))
+                }
+            } else {
+                EmptyStateRow(text: "记录两次以上基础体温后，这里会显示趋势图")
+            }
+        }
+        .nuraCard()
+    }
+}
+
+struct ConceptionEventHistorySection: View {
+    var title: String
+    var icon: String
+    var color: Color
+    var records: [ConceptionRecord]
+    var emptyText: String
+    var value: (ConceptionRecord) -> String
+    var detail: (ConceptionRecord) -> String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(icon: icon, title: title, iconColor: color)
+
+            if records.isEmpty {
+                EmptyStateRow(text: emptyText)
+            } else {
+                ConceptionEventChart(records: records, color: color)
+                VStack(spacing: 0) {
+                    ForEach(Array(records.suffix(6).reversed())) { record in
+                        ConceptionHistoryRow(
+                            date: record.timestamp.nuraDateShortDisplay,
+                            value: value(record),
+                            detail: detail(record),
+                            color: color,
+                            icon: icon
+                        )
+                    }
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+}
+
+struct ConceptionEventChart: View {
+    var records: [ConceptionRecord]
+    var color: Color
+
+    var body: some View {
+        Chart(records) { record in
+            PointMark(
+                x: .value("日期", record.timestamp),
+                y: .value("记录", 1)
+            )
+            .symbolSize(90)
+            .foregroundStyle(color)
+
+            RuleMark(x: .value("日期", record.timestamp))
+                .foregroundStyle(color.opacity(0.18))
+        }
+        .frame(height: 110)
+        .chartYAxis(.hidden)
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 4))
+        }
+    }
+}
+
+struct ConceptionHistoryRow: View {
+    var date: String
+    var value: String
+    var detail: String
+    var color: Color
+    var icon: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.12))
+                    .frame(width: 34, height: 34)
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(date)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                Text(detail)
+                    .font(.nuraCaption())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer()
+            Text(value)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(color)
+        }
+        .padding(.vertical, 8)
+    }
+}
 
 struct PrenatalReviewCard: View {
     var child: Child

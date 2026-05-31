@@ -5,6 +5,88 @@ import Foundation
 import SwiftData
 
 @Model
+final class ConceptionRecord {
+    @Attribute(.unique) var id: UUID
+    var timestamp: Date
+    var basalTemperature: Double?
+    var ovulationTestRaw: String
+    var hadIntercourse: Bool
+    var intercourseTime: Date?
+    var periodFlowRaw: String
+    var notes: String?
+    var child: Child?
+
+    init(
+        id: UUID = UUID(),
+        timestamp: Date = Date(),
+        basalTemperature: Double? = nil,
+        ovulationTest: OvulationTestResult = .notTested,
+        hadIntercourse: Bool = false,
+        intercourseTime: Date? = nil,
+        periodFlow: PeriodFlow = .none,
+        notes: String? = nil,
+        child: Child? = nil
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.basalTemperature = basalTemperature
+        self.ovulationTestRaw = ovulationTest.rawValue
+        self.hadIntercourse = hadIntercourse
+        self.intercourseTime = intercourseTime
+        self.periodFlowRaw = periodFlow.rawValue
+        self.notes = notes
+        self.child = child
+    }
+
+    var ovulationTest: OvulationTestResult {
+        get { OvulationTestResult(rawValue: ovulationTestRaw) ?? .notTested }
+        set { ovulationTestRaw = newValue.rawValue }
+    }
+
+    var periodFlow: PeriodFlow {
+        get { PeriodFlow(rawValue: periodFlowRaw) ?? .none }
+        set { periodFlowRaw = newValue.rawValue }
+    }
+
+    var temperatureDisplay: String {
+        basalTemperature.map { String(format: "%.2f°C", $0) } ?? "--"
+    }
+
+    var dateDisplay: String { timestamp.nuraDateTimeDisplay }
+}
+
+enum OvulationTestResult: String, CaseIterable, Identifiable, Codable {
+    case notTested = "未测"
+    case negative = "阴性"
+    case weakPositive = "弱阳"
+    case positive = "阳性"
+    case peak = "强阳"
+
+    var id: String { rawValue }
+
+    var score: Double {
+        switch self {
+        case .notTested: return 0
+        case .negative: return 1
+        case .weakPositive: return 2
+        case .positive: return 3
+        case .peak: return 4
+        }
+    }
+}
+
+enum PeriodFlow: String, CaseIterable, Identifiable, Codable {
+    case none = "无"
+    case spotting = "少量"
+    case light = "偏少"
+    case medium = "正常"
+    case heavy = "偏多"
+
+    var id: String { rawValue }
+    var isPeriod: Bool { self != .none }
+}
+
+@Model
 final class FetalMovementRecord {
     @Attribute(.unique) var id: UUID
     var timestamp: Date

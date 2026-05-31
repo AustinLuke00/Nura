@@ -17,6 +17,7 @@ struct TodayView: View {
     @Query private var allJaundice: [JaundiceRecord]
     @Query private var allTemperatures: [TemperatureRecord]
     @Query private var allBreathing: [BreathingRecord]
+    @Query private var allConceptionRecords: [ConceptionRecord]
     @Query private var allFetalMovements: [FetalMovementRecord]
     @Query private var allBloodPressures: [BloodPressureRecord]
     @Query private var allBloodSugars: [BloodSugarRecord]
@@ -25,6 +26,7 @@ struct TodayView: View {
 
     @State private var logType: NuraLogType?
     @State private var showBirthBabySheet = false
+    @State private var showPregnancyConfirmSheet = false
 
     var selectedChild: Child? {
         guard let id = selectedChildId else { return children.first }
@@ -107,6 +109,11 @@ struct TodayView: View {
         return allFetalMovements.filter { $0.child?.id == child.id }.sorted { $0.timestamp > $1.timestamp }
     }
 
+    var recentConceptionRecords: [ConceptionRecord] {
+        guard let child = selectedChild else { return [] }
+        return allConceptionRecords.filter { $0.child?.id == child.id }.sorted { $0.timestamp > $1.timestamp }
+    }
+
     var recentBloodPressures: [BloodPressureRecord] {
         guard let child = selectedChild else { return [] }
         return allBloodPressures.filter { $0.child?.id == child.id }.sorted { $0.timestamp > $1.timestamp }
@@ -151,6 +158,17 @@ struct TodayView: View {
                     }
 
                     switch selectedStage {
+                    case .tryingToConceive:
+                        if let child = selectedChild {
+                            ConceptionTodayCard(
+                                child: child,
+                                records: recentConceptionRecords,
+                                onConfirmPregnancy: { showPregnancyConfirmSheet = true }
+                            )
+                            ConceptionWindowCard(child: child, records: recentConceptionRecords)
+                            ConceptionVitalsCard(records: recentConceptionRecords)
+                        }
+                        TemperatureCard(records: todayTemperatures, onAddTap: { logType = .temperature })
                     case .pregnancy:
                         if let child = selectedChild {
                             PregnancyTodayCard(child: child, onDelivered: { showBirthBabySheet = true })
@@ -248,6 +266,11 @@ struct TodayView: View {
                 DeliveryDateSheet(pregnancy: pregnancy)
             }
         }
+        .sheet(isPresented: $showPregnancyConfirmSheet) {
+            if let profile = selectedChild {
+                ConfirmPregnancySheet(profile: profile)
+            }
+        }
     }
 
     var todayDateDisplay: String {
@@ -259,6 +282,252 @@ struct TodayView: View {
 }
 
 // MARK: - Stage Cards
+
+struct ConceptionTodayCard: View {
+    var child: Child
+    var records: [ConceptionRecord]
+    var onConfirmPregnancy: () -> Void
+
+    private var cycleInfo: ConceptionCycleInfo {
+        ConceptionCycleInfo(child: child, records: records)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionLabel(icon: "calendar.badge.heart", title: "备孕概览", iconColor: child.careStage.color)
+            HStack(spacing: 8) {
+                StatBox(label: "当前周期", value: "\(cycleInfo.cycleDay)", unit: "天", color: child.careStage.color, icon: "calendar")
+                StatBox(label: "易孕窗口", value: cycleInfo.fertileWindowText, unit: "", color: .nuraBlue, icon: "sparkles")
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Label("未怀孕状态", systemImage: "heart.text.square")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Text(cycleInfo.todayHint)
+                    .font(.nuraCaption())
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .background(child.careStage.color.opacity(0.07))
+            .cornerRadius(12)
+
+            Button(action: onConfirmPregnancy) {
+                Label("确认怀孕，进入孕期", systemImage: "heart.circle.fill")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(Color(hex: "EC4899"))
+                    .cornerRadius(14)
+            }
+            .buttonStyle(.plain)
+        }
+        .nuraCard()
+    }
+}
+
+struct ConceptionWindowCard: View {
+    var child: Child
+    var records: [ConceptionRecord]
+
+    private var cycleInfo: ConceptionCycleInfo {
+        ConceptionCycleInfo(child: child, records: records)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionLabel(icon: "chart.bar.fill", title: "周期图", iconColor: child.careStage.color)
+            ConceptionCycleStrip(
+                cycleDay: cycleInfo.cycleDay,
+                ovulationDay: cycleInfo.ovulationDay,
+                periodDays: cycleInfo.periodDays
+            )
+            HStack(spacing: 8) {
+                NuraBadge(text: "月经 \(cycleInfo.lastPeriodStart.nuraDateShortDisplay)", color: Color(hex: "F43F5E"))
+                NuraBadge(text: "排卵预计第\(cycleInfo.ovulationDay)天", color: child.careStage.color)
+                NuraBadge(text: "窗口 \(cycleInfo.windowStart)-\(cycleInfo.windowEnd)天", color: .nuraBlue)
+            }
+            Text("红色表示实际登记的月经来潮日期，橙色区间表示更值得观察的备孕窗口，深色圆点是今天的位置。")
+                .font(.nuraCaption())
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .nuraCard()
+    }
+}
+
+struct ConceptionCycleStrip: View {
+    var cycleDay: Int
+    var ovulationDay: Int
+    var periodDays: Set<Int>
+
+    private var windowStart: Int { max(1, ovulationDay - 5) }
+    private var windowEnd: Int { min(28, ovulationDay + 1) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 3) {
+                ForEach(1...28, id: \.self) { day in
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(color(for: day))
+                        .frame(height: day == min(cycleDay, 28) ? 34 : 24)
+                        .overlay(alignment: .top) {
+                            if day == min(cycleDay, 28) {
+                                Circle()
+                                    .fill(.primary)
+                                    .frame(width: 6, height: 6)
+                                    .padding(.top, 4)
+                            }
+                        }
+                }
+            }
+            HStack {
+                Text("月经")
+                Spacer()
+                Text("排卵")
+                Spacer()
+                Text("等待")
+            }
+            .font(.system(size: 10, design: .rounded))
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private func color(for day: Int) -> Color {
+        if periodDays.contains(day) { return Color(hex: "F43F5E").opacity(0.75) }
+        if periodDays.isEmpty && day <= 5 { return Color(hex: "F43F5E").opacity(0.28) }
+        if day >= windowStart && day <= windowEnd { return Color(hex: "F97316").opacity(day == ovulationDay ? 0.9 : 0.45) }
+        return Color(UIColor.tertiarySystemFill)
+    }
+}
+
+struct ConceptionVitalsCard: View {
+    var records: [ConceptionRecord]
+
+    private var latest: ConceptionRecord? { records.first }
+    private var latestPeriod: ConceptionRecord? { records.first(where: { $0.periodFlow.isPeriod }) }
+    private var peakCount: Int { records.filter { $0.ovulationTest == .positive || $0.ovulationTest == .peak }.count }
+    private var intercourseCount: Int { records.filter(\.hadIntercourse).count }
+    private var latestIntercourse: ConceptionRecord? { records.first(where: \.hadIntercourse) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(icon: "waveform.path.ecg", title: "备孕记录", iconColor: Color(hex: "F97316"))
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                OverviewTextBox(label: "月经来潮", value: latestPeriod?.timestamp.nuraDateShortDisplay ?? "暂无记录", color: Color(hex: "F43F5E"), icon: "drop.fill")
+                OverviewTextBox(label: "检测结果", value: latest?.ovulationTest.rawValue ?? "暂无记录", color: Color(hex: "F97316"), icon: "checklist.checked")
+                OverviewTextBox(label: "同房记录", value: latestIntercourse?.intercourseTime?.nuraDateShortDisplay ?? "\(intercourseCount)次", color: Color(hex: "EC4899"), icon: "heart.fill")
+                OverviewTextBox(label: "阳性/强阳", value: "\(peakCount)次", color: .nuraBlue, icon: "chart.line.uptrend.xyaxis")
+            }
+        }
+        .nuraCard()
+    }
+}
+
+struct ConfirmPregnancySheet: View {
+    @Bindable var profile: Child
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var lastMenstrualPeriod = Date()
+    @State private var confirmedDate = Date()
+
+    private var dueDate: Date {
+        Calendar.current.date(byAdding: .day, value: 280, to: lastMenstrualPeriod) ?? lastMenstrualPeriod
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("保存后，当前备孕档案会转为孕期档案；备孕记录不会删除，会作为归档数据留在回顾里。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Section("孕期信息") {
+                    DatePicker("确认怀孕日期", selection: $confirmedDate, in: Date.distantPast...Date(), displayedComponents: .date)
+                    DatePicker("末次月经", selection: $lastMenstrualPeriod, in: Date.distantPast...Date(), displayedComponents: .date)
+                    HStack {
+                        Text("预计预产期")
+                        Spacer()
+                        Text(dueDate.nuraDateShortDisplay)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("进入孕期")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }.foregroundStyle(.secondary)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") { savePregnancy() }
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.nuraPrimary)
+                }
+            }
+        }
+        .tint(.nuraPrimary)
+        .onAppear {
+            lastMenstrualPeriod = profile.lastMenstrualPeriodDate ?? profile.birthDate
+        }
+    }
+
+    private func savePregnancy() {
+        profile.profileType = .pregnancy
+        profile.name = "孕期档案"
+        profile.birthDate = dueDate
+        profile.color = .pink
+        profile.conceptionArchivedAt = Date()
+        profile.pregnancyConfirmedDate = confirmedDate
+        profile.lastMenstrualPeriodDate = lastMenstrualPeriod
+        dismiss()
+    }
+}
+
+struct ConceptionCycleInfo {
+    var child: Child
+    var records: [ConceptionRecord]
+
+    var lastPeriodStart: Date {
+        records
+            .filter { $0.periodFlow.isPeriod }
+            .sorted { $0.timestamp > $1.timestamp }
+            .first?
+            .timestamp ?? child.lastMenstrualPeriodDate ?? child.birthDate
+    }
+
+    var periodDays: Set<Int> {
+        let start = Calendar.current.startOfDay(for: lastPeriodStart)
+        return Set(records.filter { $0.periodFlow.isPeriod }.compactMap { record in
+            let day = (Calendar.current.dateComponents([.day], from: start, to: record.timestamp).day ?? 0) + 1
+            return (1...28).contains(day) ? day : nil
+        })
+    }
+
+    var cycleDay: Int {
+        max((Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: lastPeriodStart), to: Date()).day ?? 0) + 1, 1)
+    }
+
+    var ovulationDay: Int { 14 }
+    var windowStart: Int { max(1, ovulationDay - 5) }
+    var windowEnd: Int { min(28, ovulationDay + 1) }
+
+    var fertileWindowText: String {
+        if cycleDay >= windowStart && cycleDay <= windowEnd { return "进行中" }
+        if cycleDay < windowStart { return "\(windowStart - cycleDay)天后" }
+        return "已过"
+    }
+
+    var todayHint: String {
+        if cycleDay >= windowStart && cycleDay <= windowEnd {
+            return "今天在预计易孕窗口内，适合记录排卵试纸、基础体温和身体变化。"
+        }
+        return "当前仍按未怀孕备孕期展示。若已经验孕确认，可以点击下方按钮进入孕期并归档备孕数据。"
+    }
+}
 
 struct PregnancyTodayCard: View {
     var child: Child
@@ -1573,6 +1842,13 @@ struct QuickLogSheet: View {
     @State private var selectedVaccineKey: String = VaccineScheduleItem.standard.first?.key ?? ""
     @State private var vaccineCompletedDate = Date()
     @State private var vaccineNotes = ""
+    @State private var conceptionTemperature: Double = 36.5
+    @State private var conceptionHasTemperature = true
+    @State private var ovulationTest: OvulationTestResult = .notTested
+    @State private var hadIntercourse = false
+    @State private var intercourseTime = Date()
+    @State private var periodFlow: PeriodFlow = .medium
+    @State private var conceptionNotes = ""
 
     var body: some View {
         NavigationStack {
@@ -1580,6 +1856,36 @@ struct QuickLogSheet: View {
                 VStack(spacing: 20) {
                     Group {
                         switch logType {
+                        case .conception:
+                            ConceptionLogForm(
+                                temperature: $conceptionTemperature,
+                                hasTemperature: $conceptionHasTemperature,
+                                ovulationTest: $ovulationTest,
+                                hadIntercourse: $hadIntercourse,
+                                intercourseTime: $intercourseTime,
+                                periodFlow: $periodFlow,
+                                notes: $conceptionNotes,
+                                time: $time
+                            )
+                        case .conceptionPeriod:
+                            ConceptionPeriodLogForm(
+                                periodFlow: $periodFlow,
+                                notes: $conceptionNotes,
+                                time: $time
+                            )
+                        case .conceptionIntercourse:
+                            ConceptionIntercourseLogForm(
+                                intercourseTime: $intercourseTime,
+                                notes: $conceptionNotes
+                            )
+                        case .conceptionTest:
+                            ConceptionTestLogForm(
+                                temperature: $conceptionTemperature,
+                                hasTemperature: $conceptionHasTemperature,
+                                ovulationTest: $ovulationTest,
+                                notes: $conceptionNotes,
+                                time: $time
+                            )
                         case .feeding:
                             FeedingLogForm(
                                 type: $feedingType,
@@ -1688,6 +1994,45 @@ struct QuickLogSheet: View {
     func saveRecord() {
         guard let child = selectedChild else { dismiss(); return }
         switch logType {
+        case .conception:
+            modelContext.insert(ConceptionRecord(
+                timestamp: time,
+                basalTemperature: conceptionHasTemperature ? conceptionTemperature : nil,
+                ovulationTest: ovulationTest,
+                hadIntercourse: hadIntercourse,
+                intercourseTime: hadIntercourse ? intercourseTime : nil,
+                periodFlow: periodFlow,
+                notes: conceptionNotes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                child: child
+            ))
+        case .conceptionPeriod:
+            modelContext.insert(ConceptionRecord(
+                timestamp: Calendar.current.startOfDay(for: time),
+                ovulationTest: .notTested,
+                periodFlow: periodFlow,
+                notes: conceptionNotes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                child: child
+            ))
+        case .conceptionIntercourse:
+            let intercourseDate = Calendar.current.startOfDay(for: intercourseTime)
+            modelContext.insert(ConceptionRecord(
+                timestamp: intercourseDate,
+                ovulationTest: .notTested,
+                hadIntercourse: true,
+                intercourseTime: intercourseDate,
+                periodFlow: .none,
+                notes: conceptionNotes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                child: child
+            ))
+        case .conceptionTest:
+            modelContext.insert(ConceptionRecord(
+                timestamp: Calendar.current.startOfDay(for: time),
+                basalTemperature: conceptionHasTemperature ? conceptionTemperature : nil,
+                ovulationTest: ovulationTest,
+                periodFlow: .none,
+                notes: conceptionNotes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                child: child
+            ))
         case .feeding:
             let record = FeedingRecord(
                 timestamp: time,
@@ -1820,6 +2165,190 @@ struct QuickLogSheet: View {
 }
 
 // MARK: - Log Forms
+
+struct ConceptionLogForm: View {
+    @Binding var temperature: Double
+    @Binding var hasTemperature: Bool
+    @Binding var ovulationTest: OvulationTestResult
+    @Binding var hadIntercourse: Bool
+    @Binding var intercourseTime: Date
+    @Binding var periodFlow: PeriodFlow
+    @Binding var notes: String
+    @Binding var time: Date
+
+    var body: some View {
+        VStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("周期状态").nuraSectionHeader()
+                Picker("月经量", selection: $periodFlow) {
+                    ForEach(PeriodFlow.allCases) { flow in
+                        Text(flow.rawValue).tag(flow)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Picker("排卵试纸", selection: $ovulationTest) {
+                    ForEach(OvulationTestResult.allCases) { result in
+                        Text(result.rawValue).tag(result)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+            .nuraCard()
+
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("记录基础体温", isOn: $hasTemperature)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .tint(Color(hex: "F97316"))
+                if hasTemperature {
+                    SliderFormCard(title: "基础体温", unit: "°C", value: $temperature, range: 35.5...38.5, step: 0.01, color: Color(hex: "EF4444"))
+                }
+            }
+            .nuraCard()
+
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("登记同房信息", isOn: $hadIntercourse)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .tint(Color(hex: "EC4899"))
+                if hadIntercourse {
+                    DatePicker("同房日期", selection: $intercourseTime, in: Date.distantPast...Date(), displayedComponents: .date)
+                        .font(.nuraBody())
+                }
+                TextField("备注，例如症状、试纸颜色、医生建议", text: $notes, axis: .vertical)
+                    .lineLimit(2...4)
+                    .font(.nuraBody())
+                    .padding()
+                    .background(Color(UIColor.secondarySystemGroupedBackground))
+                    .cornerRadius(12)
+            }
+            .nuraCard()
+
+            DateOnlyPickerCard(label: "记录日期", date: $time)
+        }
+    }
+}
+
+struct ConceptionPeriodLogForm: View {
+    @Binding var periodFlow: PeriodFlow
+    @Binding var notes: String
+    @Binding var time: Date
+
+    var body: some View {
+        VStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("月经来潮").nuraSectionHeader()
+                Picker("月经量", selection: $periodFlow) {
+                    ForEach(PeriodFlow.allCases.filter(\.isPeriod)) { flow in
+                        Text(flow.rawValue).tag(flow)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Text("这里会作为周期图的真实起点显示。")
+                    .font(.nuraCaption())
+                    .foregroundStyle(.secondary)
+            }
+            .nuraCard()
+
+            DateOnlyPickerCard(label: "记录日期", date: $time)
+
+            NotesCard(title: "备注", text: $notes, placeholder: "例如颜色、腹痛、用药等")
+        }
+    }
+}
+
+struct ConceptionIntercourseLogForm: View {
+    @Binding var intercourseTime: Date
+    @Binding var notes: String
+
+    var body: some View {
+        VStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("同房信息").nuraSectionHeader()
+                DatePicker("同房日期", selection: $intercourseTime, in: Date.distantPast...Date(), displayedComponents: .date)
+                    .font(.nuraBody())
+                Text("保存后会单独计入同房记录，并在备孕概览里显示最近一次日期。")
+                    .font(.nuraCaption())
+                    .foregroundStyle(.secondary)
+            }
+            .nuraCard()
+
+            NotesCard(title: "备注", text: $notes, placeholder: "例如排卵窗口、身体状态等")
+        }
+    }
+}
+
+struct ConceptionTestLogForm: View {
+    @Binding var temperature: Double
+    @Binding var hasTemperature: Bool
+    @Binding var ovulationTest: OvulationTestResult
+    @Binding var notes: String
+    @Binding var time: Date
+
+    var body: some View {
+        VStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("检测记录").nuraSectionHeader()
+                Picker("排卵试纸", selection: $ovulationTest) {
+                    ForEach(OvulationTestResult.allCases) { result in
+                        Text(result.rawValue).tag(result)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            .nuraCard()
+
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("记录基础体温", isOn: $hasTemperature)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .tint(Color(hex: "F97316"))
+                if hasTemperature {
+                    SliderFormCard(title: "基础体温", unit: "°C", value: $temperature, range: 35.5...38.5, step: 0.01, color: Color(hex: "EF4444"))
+                }
+            }
+            .nuraCard()
+
+            DateOnlyPickerCard(label: "检测日期", date: $time)
+            NotesCard(title: "备注", text: $notes, placeholder: "例如试纸颜色、验孕结果、症状等")
+        }
+    }
+}
+
+struct DateOnlyPickerCard: View {
+    var label: String
+    @Binding var date: Date
+
+    var body: some View {
+        HStack {
+            Label(label, systemImage: "calendar")
+                .font(.nuraBody())
+                .foregroundStyle(.secondary)
+            Spacer()
+            DatePicker("", selection: $date, in: Date.distantPast...Date(), displayedComponents: .date)
+                .labelsHidden()
+                .tint(.nuraPrimary)
+        }
+        .nuraCard()
+    }
+}
+
+struct NotesCard: View {
+    var title: String
+    @Binding var text: String
+    var placeholder: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).nuraSectionHeader()
+            TextField(placeholder, text: $text, axis: .vertical)
+                .lineLimit(2...4)
+                .font(.nuraBody())
+                .padding()
+                .background(Color(UIColor.secondarySystemGroupedBackground))
+                .cornerRadius(12)
+        }
+        .nuraCard()
+    }
+}
 
 struct FeedingLogForm: View {
     @Binding var type: FeedingType

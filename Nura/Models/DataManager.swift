@@ -34,6 +34,9 @@ struct DataManager {
         var emergencyContactName: String?
         var emergencyContactPhone: String?
         var deliveryDate: Date?
+        var conceptionArchivedAt: Date?
+        var pregnancyConfirmedDate: Date?
+        var lastMenstrualPeriodDate: Date?
         var feedings: [FeedingBackup]
         var diapers: [DiaperBackup]
         var sleeps: [SleepBackup]
@@ -44,6 +47,7 @@ struct DataManager {
         var breathingRecords: [BreathingBackup]
         var medicineRecords: [MedicineBackup]
         var vaccineRecords: [VaccineBackup]
+        var conceptionRecords: [ConceptionBackup]?
         var fetalMovementRecords: [FetalMovementBackup]
         var bloodPressureRecords: [BloodPressureBackup]
         var bloodSugarRecords: [BloodSugarBackup]
@@ -133,6 +137,17 @@ struct DataManager {
         var notes: String?
     }
 
+    private struct ConceptionBackup: Codable {
+        var id: UUID
+        var timestamp: Date
+        var basalTemperature: Double?
+        var ovulationTestRaw: String
+        var hadIntercourse: Bool
+        var intercourseTime: Date?
+        var periodFlowRaw: String
+        var notes: String?
+    }
+
     private struct FetalMovementBackup: Codable {
         var id: UUID
         var timestamp: Date
@@ -202,6 +217,7 @@ struct DataManager {
         var existingBreathingIds = Set(try modelContext.fetch(FetchDescriptor<BreathingRecord>()).map(\.id))
         var existingMedicineIds = Set(try modelContext.fetch(FetchDescriptor<MedicineRecord>()).map(\.id))
         var existingVaccineIds = Set(try modelContext.fetch(FetchDescriptor<VaccineRecord>()).map(\.id))
+        var existingConceptionIds = Set(try modelContext.fetch(FetchDescriptor<ConceptionRecord>()).map(\.id))
         var existingFetalMovementIds = Set(try modelContext.fetch(FetchDescriptor<FetalMovementRecord>()).map(\.id))
         var existingBloodPressureIds = Set(try modelContext.fetch(FetchDescriptor<BloodPressureRecord>()).map(\.id))
         var existingBloodSugarIds = Set(try modelContext.fetch(FetchDescriptor<BloodSugarRecord>()).map(\.id))
@@ -284,6 +300,12 @@ struct DataManager {
                 } into: { modelContext.insert($0) }
             }
 
+            for record in childBackup.conceptionRecords ?? [] {
+                insertIfNeeded(id: record.id, existingIds: &existingConceptionIds, insertedRecords: &insertedRecords, skippedRecords: &skippedRecords) {
+                    ConceptionRecord(id: record.id, timestamp: record.timestamp, basalTemperature: record.basalTemperature, ovulationTest: OvulationTestResult(rawValue: record.ovulationTestRaw) ?? .notTested, hadIntercourse: record.hadIntercourse, intercourseTime: record.intercourseTime, periodFlow: PeriodFlow(rawValue: record.periodFlowRaw) ?? .none, notes: record.notes, child: child)
+                } into: { modelContext.insert($0) }
+            }
+
             for record in childBackup.fetalMovementRecords {
                 insertIfNeeded(id: record.id, existingIds: &existingFetalMovementIds, insertedRecords: &insertedRecords, skippedRecords: &skippedRecords) {
                     FetalMovementRecord(id: record.id, timestamp: record.timestamp, count: record.count, durationMinutes: record.durationMinutes, actualSeconds: record.actualSeconds, child: child)
@@ -328,6 +350,7 @@ struct DataManager {
         try modelContext.delete(model: JaundiceRecord.self)
         try modelContext.delete(model: MedicineRecord.self)
         try modelContext.delete(model: VaccineRecord.self)
+        try modelContext.delete(model: ConceptionRecord.self)
         try modelContext.delete(model: TemperatureRecord.self)
         try modelContext.delete(model: BreathingRecord.self)
         try modelContext.delete(model: FetalMovementRecord.self)
@@ -384,6 +407,9 @@ struct DataManager {
             emergencyContactName: child.emergencyContactName,
             emergencyContactPhone: child.emergencyContactPhone,
             deliveryDate: child.deliveryDate,
+            conceptionArchivedAt: child.conceptionArchivedAt,
+            pregnancyConfirmedDate: child.pregnancyConfirmedDate,
+            lastMenstrualPeriodDate: child.lastMenstrualPeriodDate,
             feedings: child.feedings.sorted { $0.timestamp < $1.timestamp }.map {
                 FeedingBackup(id: $0.id, timestamp: $0.timestamp, typeRaw: $0.typeRaw, durationMinutes: $0.durationMinutes, amountMl: $0.amountMl, notes: $0.notes)
             },
@@ -414,6 +440,9 @@ struct DataManager {
             vaccineRecords: child.vaccineRecords.sorted { $0.scheduledDate < $1.scheduledDate }.map {
                 VaccineBackup(id: $0.id, scheduleKey: $0.scheduleKey, vaccineName: $0.vaccineName, dose: $0.dose, scheduledDate: $0.scheduledDate, completedDate: $0.completedDate, notes: $0.notes)
             },
+            conceptionRecords: child.conceptionRecords.sorted { $0.timestamp < $1.timestamp }.map {
+                ConceptionBackup(id: $0.id, timestamp: $0.timestamp, basalTemperature: $0.basalTemperature, ovulationTestRaw: $0.ovulationTestRaw, hadIntercourse: $0.hadIntercourse, intercourseTime: $0.intercourseTime, periodFlowRaw: $0.periodFlowRaw, notes: $0.notes)
+            },
             fetalMovementRecords: child.fetalMovementRecords.sorted { $0.timestamp < $1.timestamp }.map {
                 FetalMovementBackup(id: $0.id, timestamp: $0.timestamp, count: $0.count, durationMinutes: $0.durationMinutes, actualSeconds: $0.actualSeconds)
             },
@@ -439,7 +468,10 @@ struct DataManager {
             profileType: Child.ProfileType(rawValue: backup.profileTypeRaw) ?? .baby,
             emergencyContactName: backup.emergencyContactName,
             emergencyContactPhone: backup.emergencyContactPhone,
-            deliveryDate: backup.deliveryDate
+            deliveryDate: backup.deliveryDate,
+            conceptionArchivedAt: backup.conceptionArchivedAt,
+            pregnancyConfirmedDate: backup.pregnancyConfirmedDate,
+            lastMenstrualPeriodDate: backup.lastMenstrualPeriodDate
         )
     }
 }

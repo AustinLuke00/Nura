@@ -16,6 +16,9 @@ final class Child {
     var emergencyContactName: String?
     var emergencyContactPhone: String?
     var deliveryDate: Date?
+    var conceptionArchivedAt: Date?
+    var pregnancyConfirmedDate: Date?
+    var lastMenstrualPeriodDate: Date?
 
     @Relationship(deleteRule: .cascade, inverse: \FeedingRecord.child)
     var feedings: [FeedingRecord] = []
@@ -59,6 +62,9 @@ final class Child {
     @Relationship(deleteRule: .cascade, inverse: \PregnancyWeightRecord.child)
     var pregnancyWeightRecords: [PregnancyWeightRecord] = []
 
+    @Relationship(deleteRule: .cascade, inverse: \ConceptionRecord.child)
+    var conceptionRecords: [ConceptionRecord] = []
+
     init(
         id: UUID = UUID(),
         name: String,
@@ -68,7 +74,10 @@ final class Child {
         profileType: ProfileType = .baby,
         emergencyContactName: String? = nil,
         emergencyContactPhone: String? = nil,
-        deliveryDate: Date? = nil
+        deliveryDate: Date? = nil,
+        conceptionArchivedAt: Date? = nil,
+        pregnancyConfirmedDate: Date? = nil,
+        lastMenstrualPeriodDate: Date? = nil
     ) {
         self.id = id
         self.name = name
@@ -79,6 +88,9 @@ final class Child {
         self.emergencyContactName = emergencyContactName
         self.emergencyContactPhone = emergencyContactPhone
         self.deliveryDate = deliveryDate
+        self.conceptionArchivedAt = conceptionArchivedAt
+        self.pregnancyConfirmedDate = pregnancyConfirmedDate
+        self.lastMenstrualPeriodDate = lastMenstrualPeriodDate
     }
 
     // MARK: - Enums
@@ -88,7 +100,7 @@ final class Child {
     }
 
     enum ProfileType: String, Codable {
-        case pregnancy, baby
+        case tryingToConceive, pregnancy, baby
     }
 
     enum ChildColor: String, CaseIterable, Codable {
@@ -136,6 +148,11 @@ final class Child {
                 return "已生产 · \(deliveryDate.nuraDateShortDisplay)"
             }
             return "孕\(pregnancyWeekDisplay) · 距预产期\(daysUntilDueDate)天"
+        }
+        if profileType == .tryingToConceive {
+            let startDate = lastMenstrualPeriodDate ?? birthDate
+            let d = max(Calendar.current.dateComponents([.day], from: startDate, to: .now).day ?? 0, 0) + 1
+            return conceptionArchivedAt == nil ? "备孕第\(d)天 · 未怀孕" : "已转孕期 · 备孕归档"
         }
 
         let d = ageInDays

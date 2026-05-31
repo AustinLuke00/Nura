@@ -5,12 +5,14 @@ import Foundation
 import SwiftUI
 
 enum CareStage: String {
+    case tryingToConceive
     case pregnancy
     case infant
     case child
 
     var title: String {
         switch self {
+        case .tryingToConceive: return "备孕"
         case .pregnancy: return "孕期"
         case .infant: return "婴儿"
         case .child: return "儿童"
@@ -19,6 +21,7 @@ enum CareStage: String {
 
     var subtitle: String {
         switch self {
+        case .tryingToConceive: return "周期、排卵与体温趋势"
         case .pregnancy: return "产检、体征与用药更重要"
         case .infant: return "喂养、睡眠与基础健康记录"
         case .child: return "成长、作息与健康追踪"
@@ -27,6 +30,7 @@ enum CareStage: String {
 
     var icon: String {
         switch self {
+        case .tryingToConceive: return "calendar.badge.heart"
         case .pregnancy: return "heart.circle.fill"
         case .infant: return "figure.child.circle.fill"
         case .child: return "figure.and.child.holdinghands"
@@ -35,6 +39,7 @@ enum CareStage: String {
 
     var color: Color {
         switch self {
+        case .tryingToConceive: return Color(hex: "F97316")
         case .pregnancy: return Color(hex: "EC4899")
         case .infant: return .nuraPrimary
         case .child: return Color(hex: "0EA5E9")
@@ -43,6 +48,7 @@ enum CareStage: String {
 
     var primaryLogType: NuraLogType {
         switch self {
+        case .tryingToConceive: return .conceptionIntercourse
         case .pregnancy: return .fetalMovement
         case .infant: return .feeding
         case .child: return .growth
@@ -51,6 +57,8 @@ enum CareStage: String {
 
     var logTypes: [NuraLogType] {
         switch self {
+        case .tryingToConceive:
+            return [.conceptionPeriod, .conceptionIntercourse, .conceptionTest, .temperature, .medicine]
         case .pregnancy:
             return [.fetalMovement, .bloodPressure, .bloodSugar, .pregnancyWeight, .temperature, .medicine]
         case .infant:
@@ -62,6 +70,10 @@ enum CareStage: String {
 }
 
 enum NuraLogType: String, Identifiable {
+    case conception = "备孕记录"
+    case conceptionPeriod = "月经记录"
+    case conceptionIntercourse = "同房记录"
+    case conceptionTest = "检测记录"
     case feeding = "喂奶"
     case diaper = "换尿布"
     case sleep = "睡眠"
@@ -80,6 +92,10 @@ enum NuraLogType: String, Identifiable {
 
     var shortTitle: String {
         switch self {
+        case .conception: return "备孕"
+        case .conceptionPeriod: return "月经"
+        case .conceptionIntercourse: return "同房"
+        case .conceptionTest: return "检测"
         case .feeding: return "喂奶"
         case .diaper: return "尿布"
         case .sleep: return "睡眠"
@@ -98,6 +114,10 @@ enum NuraLogType: String, Identifiable {
 
     var icon: String {
         switch self {
+        case .conception: return "calendar.badge.heart"
+        case .conceptionPeriod: return "drop.fill"
+        case .conceptionIntercourse: return "heart.fill"
+        case .conceptionTest: return "checklist.checked"
         case .feeding: return "drop.fill"
         case .diaper: return "sparkles"
         case .sleep: return "moon.fill"
@@ -116,6 +136,10 @@ enum NuraLogType: String, Identifiable {
 
     var color: Color {
         switch self {
+        case .conception: return Color(hex: "F97316")
+        case .conceptionPeriod: return Color(hex: "F43F5E")
+        case .conceptionIntercourse: return Color(hex: "EC4899")
+        case .conceptionTest: return Color(hex: "F97316")
         case .feeding: return .nuraPrimary
         case .diaper: return .nuraBlue
         case .sleep: return Color(hex: "818CF8")
@@ -166,17 +190,20 @@ struct PrenatalCheckupItem: Identifiable {
 
 extension Child {
     var careStage: CareStage {
+        if profileType == .tryingToConceive { return .tryingToConceive }
         if profileType == .pregnancy { return .pregnancy }
         return ageInDays < 365 ? .infant : .child
     }
 
     var isPregnancy: Bool { careStage == .pregnancy }
+    var isTryingToConceive: Bool { careStage == .tryingToConceive }
     var hasDelivered: Bool { profileType == .pregnancy && deliveryDate != nil }
     var isInfant: Bool { careStage == .infant }
     var isChildStage: Bool { careStage == .child }
 
     var dateFieldTitle: String {
-        isPregnancy ? "预产期" : "出生日期"
+        if isTryingToConceive { return "末次月经" }
+        return isPregnancy ? "预产期" : "出生日期"
     }
 
     var stageDisplay: String {

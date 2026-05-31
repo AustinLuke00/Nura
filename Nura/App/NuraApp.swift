@@ -43,6 +43,7 @@ struct NuraApp: App {
             VaccineRecord.self,
             TemperatureRecord.self,
             BreathingRecord.self,
+            ConceptionRecord.self,
             FetalMovementRecord.self,
             BloodPressureRecord.self,
             BloodSugarRecord.self,
@@ -133,7 +134,7 @@ struct WelcomeSheet: View {
     @State private var birthDate = Date()
     @State private var gender: Child.Gender = .female
     @State private var color: Child.ChildColor = .purple
-    @State private var profileType: Child.ProfileType = .baby
+    @State private var profileType: Child.ProfileType = .tryingToConceive
     @State private var emergencyContactName = ""
     @State private var emergencyContactPhone = ""
     @State private var showImporter = false
@@ -310,10 +311,10 @@ struct WelcomeSheet: View {
                         .font(.system(size: 40))
                         .foregroundStyle(.nuraPrimary)
                     
-                    Text(profileType == .pregnancy ? "添加孕妇信息" : "添加宝宝信息")
+                    Text(profileType == .tryingToConceive ? "添加备孕信息" : (profileType == .pregnancy ? "添加孕妇信息" : "添加宝宝信息"))
                         .font(.system(size: 24, weight: .bold, design: .rounded))
                     
-                    Text(profileType == .pregnancy ? "只需预产期，即可开始孕周追踪" : "让我们开始记录宝宝的成长故事")
+                    Text(profileType == .tryingToConceive ? "先记录末次月经和同房信息，确认后可一键转入孕期" : (profileType == .pregnancy ? "填写末次月经，系统会自动推算预产期" : "让我们开始记录宝宝的成长故事"))
                         .font(.system(size: 14, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
@@ -322,6 +323,7 @@ struct WelcomeSheet: View {
                 // 表单
                 VStack(spacing: 16) {
                     Picker("信息类型", selection: $profileType) {
+                        Label("备孕信息", systemImage: "calendar.badge.heart").tag(Child.ProfileType.tryingToConceive)
                         Label("宝宝信息", systemImage: "figure.child").tag(Child.ProfileType.baby)
                         Label("孕妇信息", systemImage: "heart.circle.fill").tag(Child.ProfileType.pregnancy)
                     }
@@ -345,9 +347,9 @@ struct WelcomeSheet: View {
                         }
                     }
 
-                    // 出生日期 / 预产期
+                    // 出生日期 / 末次月经
                     VStack(alignment: .leading, spacing: 8) {
-                        Label(profileType == .pregnancy ? "预产期" : "出生日期", systemImage: "calendar")
+                        Label(profileType == .baby ? "出生日期" : "末次月经", systemImage: "calendar")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .foregroundStyle(.secondary)
                         
@@ -355,7 +357,7 @@ struct WelcomeSheet: View {
                             DatePicker(
                                 "",
                                 selection: $birthDate,
-                                in: profileType == .pregnancy ? Date()...latestSelectableDate : Date.distantPast...Date(),
+                                in: Date.distantPast...Date(),
                                 displayedComponents: .date
                             )
                                 .datePickerStyle(.compact)
@@ -367,7 +369,7 @@ struct WelcomeSheet: View {
                         .background(Color(UIColor.secondarySystemGroupedBackground))
                         .cornerRadius(12)
 
-                        Text(profileType == .pregnancy ? "孕期档案会根据预产期显示孕周、宝宝大小和孕期重点。" : "宝宝档案会根据年龄自动切换婴儿或儿童界面。")
+                        Text(profileType == .tryingToConceive ? "备孕档案会根据末次月经显示周期图、排卵窗口，并重点登记同房信息。" : (profileType == .pregnancy ? "预计预产期：\(estimatedDueDate(from: birthDate).nuraDateShortDisplay)。孕期档案默认女性，不需要选择性别。" : "宝宝档案会根据年龄自动切换婴儿或儿童界面。"))
                             .font(.system(size: 11, design: .rounded))
                             .foregroundStyle(.secondary)
                     }
@@ -377,7 +379,7 @@ struct WelcomeSheet: View {
                             name: $emergencyContactName,
                             phone: $emergencyContactPhone
                         )
-                    } else {
+                    } else if profileType == .baby {
                         // 性别选择
                         VStack(alignment: .leading, spacing: 8) {
                             Label("性别", systemImage: "person.2.fill")
@@ -451,9 +453,7 @@ struct WelcomeSheet: View {
             }
         }
         .onChange(of: profileType) { _, newValue in
-            if newValue == .pregnancy && birthDate < Date() {
-                birthDate = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
-            } else if newValue == .baby && birthDate > Date() {
+            if newValue == .baby && birthDate > Date() {
                 birthDate = Date()
             }
         }
@@ -490,16 +490,17 @@ struct WelcomeSheet: View {
     
     func saveChild() {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard profileType == .pregnancy || !trimmed.isEmpty else { return }
+        guard profileType != .baby || !trimmed.isEmpty else { return }
 
         let child = Child(
-            name: profileType == .pregnancy ? "孕期档案" : trimmed,
-            birthDate: birthDate,
-            gender: gender,
-            color: profileType == .pregnancy ? .pink : color,
+            name: profileType == .tryingToConceive ? "备孕档案" : (profileType == .pregnancy ? "孕期档案" : trimmed),
+            birthDate: profileType == .pregnancy ? estimatedDueDate(from: birthDate) : birthDate,
+            gender: profileType == .baby ? gender : .female,
+            color: profileType == .tryingToConceive ? .amber : (profileType == .pregnancy ? .pink : color),
             profileType: profileType,
             emergencyContactName: emergencyContactName.trimmingCharacters(in: .whitespaces).nilIfEmpty,
-            emergencyContactPhone: emergencyContactPhone.trimmingCharacters(in: .whitespaces).nilIfEmpty
+            emergencyContactPhone: emergencyContactPhone.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+            lastMenstrualPeriodDate: profileType == .baby ? nil : birthDate
         )
         modelContext.insert(child)
         
@@ -507,6 +508,10 @@ struct WelcomeSheet: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             dismiss()
         }
+    }
+
+    private func estimatedDueDate(from lastMenstrualPeriod: Date) -> Date {
+        Calendar.current.date(byAdding: .day, value: 280, to: lastMenstrualPeriod) ?? lastMenstrualPeriod
     }
 }
 
